@@ -559,6 +559,9 @@ extern s32 g_MusicDisableMpDeath;
 extern s32 g_BgunGeMuzzleFlashes;
 extern s32 g_FileAutoSelect;
 
+extern u8 g_MpWeaponSetRandomFilters[NUM_MPWEAPONS];
+extern s32 g_MpWeaponRandomFilterNum;
+
 extern s32 g_NetMode;
 
 #define PLAYER_EXTCFG() g_PlayerExtCfg[g_Vars.currentplayerstats->mpindex & 3]
