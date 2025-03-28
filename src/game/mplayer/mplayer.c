@@ -3913,6 +3913,23 @@ void mp0f18dec4(s32 slot)
 #endif
 }
 
+static u64 packWeaponSetRandomFilters()
+{
+	u64 packed = 0;
+	for (int i = 0; i < NUM_MPWEAPONS; ++i) {
+		packed |= g_MpWeaponSetRandomFilters[i] != 0 ? (1 << i) : 0;
+	}
+
+	return packed;
+}
+
+static void unpackWeaponSetRandomFilters(u64 packed)
+{
+	for (int i = 0; i < NUM_MPWEAPONS; ++i) {
+		g_MpWeaponSetRandomFilters[i] = (packed & (1 << i)) >> i;
+	}
+}
+
 void mpsetupfileLoadWad(struct savebuffer *buffer)
 {
 	s32 i;
@@ -3953,6 +3970,9 @@ void mpsetupfileLoadWad(struct savebuffer *buffer)
 	for (i = 0; i < ARRAYCOUNT(g_MpSetup.weapons); i++) {
 		g_MpSetup.weapons[i] = savebufferReadBits(buffer, 7);
 	}
+
+	u64 wpnRndPacked = savebufferReadBits(buffer, 64);
+	unpackWeaponSetRandomFilters(wpnRndPacked);
 
 	func0f18913c();
 
@@ -4019,6 +4039,9 @@ void mpsetupfileSaveWad(struct savebuffer *buffer)
 	for (i = 0; i < ARRAYCOUNT(g_MpSetup.weapons); i++) {
 		savebufferOr(buffer, g_MpSetup.weapons[i], 7);
 	}
+
+	u64 wpnRndPacked = packWeaponSetRandomFilters();
+	savebufferOr(buffer, wpnRndPacked, 64);
 
 	savebufferOr(buffer, g_MpSetup.timelimit, 6);
 	savebufferOr(buffer, g_MpSetup.scorelimit, 7);
