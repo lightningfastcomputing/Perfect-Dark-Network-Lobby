@@ -3533,7 +3533,7 @@ void mpplayerfileSaveWad(s32 playernum, struct savebuffer *buffer)
 	s32 j;
 	u32 stack;
 
-	func0f0d55a4(buffer, g_PlayerConfigsArray[playernum].base.name);
+	savebufferWriteString(buffer, g_PlayerConfigsArray[playernum].base.name);
 
 	if (g_PlayerConfigsArray[playernum].time > 0x0fffffff) { // over 3106 days
 		g_PlayerConfigsArray[playernum].time = 0x0fffffff;
@@ -3684,8 +3684,6 @@ s32 mpplayerfileSave(s32 playernum, s32 device, s32 fileid, u16 deviceserial)
 	if (device >= 0) {
 		savebufferClear(&buffer);
 		mpplayerfileSaveWad(playernum, &buffer);
-		func0f0d54c4(&buffer);
-
 		var80075bd0[2] = true;
 
 		ret = pakSaveAtGuid(device, fileid, PAKFILETYPE_MPPLAYER, buffer.bytes, &newfileid, 0);
@@ -3718,8 +3716,6 @@ s32 mpplayerfileLoad(s32 playernum, s32 device, s32 fileid, u16 deviceserial)
 			g_PlayerConfigsArray[playernum].fileguid.deviceserial = deviceserial;
 
 			mpplayerfileLoadWad(playernum, &buffer, 1);
-			func0f0d54c4(&buffer);
-
 			g_PlayerConfigsArray[playernum].handicap = 0x80;
 			return 0;
 		}
@@ -3917,7 +3913,7 @@ static u64 packWeaponSetRandomFilters()
 {
 	u64 packed = 0;
 	for (int i = 0; i < NUM_MPWEAPONS; ++i) {
-		packed |= g_MpWeaponSetRandomFilters[i] != 0 ? (1 << i) : 0;
+		packed |= g_MpWeaponSetRandomFilters[i] != 0 ? (1LL << i) : 0;
 	}
 
 	return packed;
@@ -3926,11 +3922,11 @@ static u64 packWeaponSetRandomFilters()
 static void unpackWeaponSetRandomFilters(u64 packed)
 {
 	for (int i = 0; i < NUM_MPWEAPONS; ++i) {
-		g_MpWeaponSetRandomFilters[i] = (packed & (1 << i)) >> i;
+		g_MpWeaponSetRandomFilters[i] = (packed & (1LL << i)) != 0;
 	}
 }
 
-void mpsetupfileLoadWad(struct savebuffer *buffer)
+void mpsetupfileLoadWad(struct savebuffer *buffer, u8 version)
 {
 	s32 i;
 	s32 j;
@@ -3993,7 +3989,7 @@ void mpsetupfileSaveWad(struct savebuffer *buffer)
 	s32 mpbodynum;
 	s32 i;
 
-	func0f0d55a4_ext(buffer, g_MpSetup.name, MPSETUP_MAXNAME+1);
+	savebufferWriteString_ext(buffer, g_MpSetup.name, MPSETUP_MAXNAME + 1);
 
 	for (i = 0; i < MAX_BOTS; i++) {
 		if (g_MpSetup.chrslots & (1 << (i + 4))) {
