@@ -10,6 +10,7 @@
 #include "game/menu.h"
 #include "game/gamefile.h"
 #include "game/player.h"
+#include "lib/joy.h"
 #include "video.h"
 #include "input.h"
 #include "config.h"
