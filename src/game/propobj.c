@@ -6688,6 +6688,12 @@ s32 projectileTick(struct defaultobj *obj, bool *embedded)
 				}
 
 				if (projectile->speed.f[0] == 0.0f && projectile->speed.f[2] == 0.0f && projectile->unk0dc == 0.0f) {
+#ifndef PLATFORM_N64
+					if (g_NetMode == NETMODE_SERVER) {
+						// sliding object has stopped, sync the final position just in case
+						netmsgSvcPropMoveWrite(&g_NetMsgRel, prop, NULL);
+					}
+#endif
 					objFreeProjectile(obj);
 				}
 
