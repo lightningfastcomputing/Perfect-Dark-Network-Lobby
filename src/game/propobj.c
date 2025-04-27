@@ -15418,6 +15418,11 @@ void objDamage(struct defaultobj *obj, f32 damage, struct coord *pos, s32 weapon
 		} else {
 			return;
 		}
+	} else if (g_NetMode == NETMODE_SERVER) {
+		if (obj->prop && obj->prop->type != PROPTYPE_CHR) {
+			// chr damage is handled by a separate message
+			netmsgSvcPropDamageWrite(&g_NetMsgRel, obj->prop, damage, pos, weaponnum, playernum);
+		}
 	}
 #endif
 
