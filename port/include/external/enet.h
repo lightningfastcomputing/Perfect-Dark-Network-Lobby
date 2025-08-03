@@ -1150,6 +1150,7 @@ extern "C" {
 			return t;
 		}
 
+		#ifndef __MINGW32__
 		int clock_gettime(int X, struct timespec* tv) {
 			LARGE_INTEGER t;
 			FILETIME f;
@@ -1193,6 +1194,7 @@ extern "C" {
 
 			return 0;
 		}
+		#endif
 	#elif __APPLE__ && (__MAC_OS_X_VERSION_MIN_REQUIRED < 101200 || __IPHONE_OS_VERSION_MIN_REQUIRED < 100000) && !defined(CLOCK_MONOTONIC)
 		#define CLOCK_MONOTONIC 0
 
