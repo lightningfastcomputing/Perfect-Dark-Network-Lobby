@@ -1170,7 +1170,7 @@ u32 netmsgSvcPropDamageWrite(struct netbuf *dst, struct prop *prop, f32 damage, 
 	netbufWriteF32(dst, damage);
 	netbufWriteS8(dst, weaponnum);
 	netbufWriteS8(dst, playernum);
-	netbufWriteU32(dst, prop->obj->hidden);
+	netbufWriteU32(dst, prop->obj->hidden & ~(OBJHFLAG_PROJECTILE | OBJHFLAG_EMBEDDED));
 	return dst->error;
 }
 
@@ -1188,7 +1188,7 @@ u32 netmsgSvcPropDamageRead(struct netbuf *src, struct netclient *srccl)
 	}
 	if (prop && prop->obj && prop->type != PROPTYPE_PLAYER && prop->type != PROPTYPE_CHR && !src->error) {
 		prop->obj->damage = damagepre;
-		prop->obj->hidden = hidden;
+		prop->obj->hidden = hidden | (prop->obj->hidden & (OBJHFLAG_PROJECTILE | OBJHFLAG_EMBEDDED));
 		objDamage(prop->obj, -damage, &pos, weaponnum, playernum);
 	}
 	return src->error;

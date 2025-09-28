@@ -11040,7 +11040,7 @@ s32 objTickPlayer(struct prop *prop)
 
 	if (obj->hidden & OBJHFLAG_ISRETICK) {
 		obj->hidden &= ~OBJHFLAG_ISRETICK;
-	} else if ((obj->hidden & OBJHFLAG_PROJECTILE) && (obj->projectile->flags & PROJECTILEFLAG_SLIDING) == 0) {
+	} else if ((obj->hidden & OBJHFLAG_PROJECTILE) && obj->projectile && (obj->projectile->flags & PROJECTILEFLAG_SLIDING) == 0) {
 		prop->flags &= ~PROPFLAG_ONTHISSCREENTHISTICK;
 		obj->hidden |= OBJHFLAG_ISRETICK;
 		return TICKOP_RETICK;
