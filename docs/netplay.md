@@ -37,7 +37,6 @@ Expect nothing to work right.
 
 ### Known issues
 
-* Clients can't throw laptop guns.
 * Clients see rocket rotation incorrectly.
 * Clients can't use Slayer fly-by-wire rockets and they will not correctly sync if the server uses them.
 * Clients can't use the alt fire mode on the FarSight and probably a couple other guns.
