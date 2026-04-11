@@ -44,3 +44,4 @@ Expect nothing to work right.
 * Most likely only Combat works properly.
 * Sims don't work in netgames.
 * Bandwidth consumption on the server is pretty large on the default settings, especially with 8 players.
+ 
