@@ -9,6 +9,7 @@
 #include "game/mainmenu.h"
 #include "game/menu.h"
 #include "game/gamefile.h"
+#include "game/filelist.h"
 #include "video.h"
 #include "input.h"
 #include "config.h"
@@ -17,6 +18,8 @@
 
 extern MenuItemHandlerResult menuhandlerMainMenuCombatSimulator(s32 operation, struct menuitem *item, union handlerdata *data);
 extern MenuItemHandlerResult menuhandlerMpAdvancedSetup(s32 operation, struct menuitem *item, union handlerdata *data);
+extern struct menuitem g_MpPlayerSetup234MenuItems[];
+extern struct menudialogdef g_NetJoinPlayerSetupMenuDialog;
 
 static s32 g_NetMenuMaxPlayers = NET_MAX_CLIENTS;
 static s32 g_NetMenuPort = NET_DEFAULT_PORT;
@@ -121,7 +124,7 @@ struct menudialogdef g_NetHostMenuDialog = {
 	(uintptr_t)"Host Network Game",
 	g_NetHostMenuItems,
 	NULL,
-	MENUDIALOGFLAG_LITERAL_TEXT,
+	MENUDIALOGFLAG_LITERAL_TEXT | MENUDIALOGFLAG_STARTSELECTS,
 	NULL,
 };
 
@@ -273,6 +276,18 @@ MenuItemHandlerResult menuhandlerJoinStart(s32 operation, struct menuitem *item,
 	return 0;
 }
 
+static MenuItemHandlerResult menuhandlerJoinPlayerSetup(s32 operation, struct menuitem *item, union handlerdata *data)
+{
+	if (operation == MENUOP_SET) {
+		// load MP player file
+		filelistCreate(0, FILETYPE_MPPLAYER);
+		filelistsTick();
+		menuPushDialog(&g_NetJoinPlayerSetupMenuDialog);
+	}
+
+	return 0;
+}
+
 struct menuitem g_NetJoinMenuItems[] = {
 	{
 		MENUITEMTYPE_SELECTABLE,
@@ -281,6 +296,14 @@ struct menuitem g_NetJoinMenuItems[] = {
 		(uintptr_t)"Address:   \n",
 		(uintptr_t)&menutextJoinAddress,
 		menuhandlerJoinAddress,
+	},
+	{
+		MENUITEMTYPE_SELECTABLE,
+		0,
+		0,
+		L_MPMENU_028, // "Player Setup"
+		0,
+		menuhandlerJoinPlayerSetup,
 	},
 	{
 		MENUITEMTYPE_SELECTABLE,
@@ -314,7 +337,7 @@ struct menudialogdef g_NetJoinMenuDialog = {
 	(uintptr_t)"Join Network Game",
 	g_NetJoinMenuItems,
 	NULL,
-	MENUDIALOGFLAG_LITERAL_TEXT | MENUDIALOGFLAG_STARTSELECTS | MENUDIALOGFLAG_IGNOREBACK,
+	MENUDIALOGFLAG_LITERAL_TEXT | MENUDIALOGFLAG_STARTSELECTS,
 	NULL,
 };
 
@@ -385,6 +408,15 @@ struct menudialogdef g_NetMenuDialog = {
 	(uintptr_t)"Network Game",
 	g_NetMenuItems,
 	NULL,
-	MENUDIALOGFLAG_MPLOCKABLE | MENUDIALOGFLAG_LITERAL_TEXT,
+	MENUDIALOGFLAG_MPLOCKABLE | MENUDIALOGFLAG_LITERAL_TEXT | MENUDIALOGFLAG_STARTSELECTS,
+	NULL,
+};
+
+struct menudialogdef g_NetJoinPlayerSetupMenuDialog = {
+	MENUDIALOGTYPE_DEFAULT,
+	L_MPMENU_028, // "Player Setup"
+	g_MpPlayerSetup234MenuItems,
+	NULL,
+	MENUDIALOGFLAG_DROPOUTONCLOSE | MENUDIALOGFLAG_STARTSELECTS,
 	NULL,
 };
