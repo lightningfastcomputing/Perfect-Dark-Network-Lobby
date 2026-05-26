@@ -6,7 +6,7 @@ This branch of the port contains an **extremely** early and experimental impleme
 **DISCLAIMER:** This is **NOT READY** for prime time. Use at your own risk if you are not a developer.  
 **Do not create issues about problems in this branch until this disclaimer is gone.**
 
-See [this file](https://github.com/fgsfdsfgs/perfect_dark/blob/port-net/docs/netplay.md) for more information on how this works.
+See [this file](https://github.com/perfect-dark-pc-port/perfect_dark/blob/port-net/docs/netplay.md) for more information on how this works.
 
 ## Original description
 
@@ -53,13 +53,13 @@ There are minor graphics- and gameplay-related issues, and possibly occasional c
 
 ## Download
 
-Latest [automatic builds](https://github.com/fgsfdsfgs/perfect_dark/actions) of the netplay branch for supported platforms:
-* [x86_64-windows (`port-net`)](https://nightly.link/fgsfdsfgs/perfect_dark/workflows/c-cpp/port-net/pd-x86_64-windows.zip)
-* [i686-windows (`port-net`)](https://nightly.link/fgsfdsfgs/perfect_dark/workflows/c-cpp/port-net/pd-i686-windows.zip)
-* [x86_64-linux (`port-net`)](https://nightly.link/fgsfdsfgs/perfect_dark/workflows/c-cpp/port-net/pd-x86_64-linux.zip)
-* [i686-linux (`port-net`)](https://nightly.link/fgsfdsfgs/perfect_dark/workflows/c-cpp/port-net/pd-i686-linux.zip)
+Latest [automatic builds](https://github.com/perfect-dark-pc-port/perfect_dark/actions) of the netplay branch for supported platforms:
+* [x86_64-windows (`port-net`)](https://nightly.link/perfect-dark-pc-port/perfect_dark/workflows/c-cpp/port-net/pd-x86_64-windows.zip)
+* [i686-windows (`port-net`)](https://nightly.link/perfect-dark-pc-port/perfect_dark/workflows/c-cpp/port-net/pd-i686-windows.zip)
+* [x86_64-linux (`port-net`)](https://nightly.link/perfect-dark-pc-port/perfect_dark/workflows/c-cpp/port-net/pd-x86_64-linux.zip)
+* [i686-linux (`port-net`)](https://nightly.link/perfect-dark-pc-port/perfect_dark/workflows/c-cpp/port-net/pd-i686-linux.zip)
 
-If you are looking for regular builds (the `port` branch), see [this link](https://github.com/fgsfdsfgs/perfect_dark/blob/port/README.md#download).
+If you are looking for regular builds (the `port` branch), see [this link](https://github.com/perfect-dark-pc-port/perfect_dark/blob/port/README.md#download).
 
 ## Running
 
@@ -81,7 +81,7 @@ Optionally, you can move the data folder to `~/.local/share/perfectdark` on Linu
 
 Note that users with different ROMs can't play netgames with each other.
 
-Additional information can be found in the [wiki](https://github.com/fgsfdsfgs/perfect_dark/wiki).
+Additional information can be found in the [wiki](https://github.com/perfect-dark-pc-port/perfect_dark/wiki).
 
 A GPU supporting OpenGL 3.0/ES3.0 or above is required to run the port.
 
@@ -131,7 +131,7 @@ Controls can be rebound in `pd.ini`. Default control scheme is as follows:
 3. Install dependencies:  
    `pacman -S mingw-w64-x86_64-toolchain mingw-w64-x86_64-SDL2 mingw-w64-x86_64-zlib mingw-w64-x86_64-cmake mingw-w64-x86_64-python3 mingw-w64-i686-toolchain mingw-w64-i686-SDL2 mingw-w64-i686-zlib mingw-w64-i686-cmake mingw-w64-i686-python3 make git`
 4. Get the source code:  
-   `git clone -b port-net --recursive https://github.com/fgsfdsfgs/perfect_dark.git && cd perfect_dark`
+   `git clone -b port-net --recursive https://github.com/perfect-dark-pc-port/perfect_dark.git && cd perfect_dark`
 5. Run `cmake -G"Unix Makefiles" -Bbuild .`.
    * Add ` -DROMID=pal-final` or ` -DROMID=jpn-final` at the end of the command if you want to build a PAL or JPN executable respectively.\
 6. Run `cmake --build build -j4 -- -O`.
@@ -143,7 +143,7 @@ Controls can be rebound in `pd.ini`. Default control scheme is as follows:
 1. Ensure you have gcc, g++ (version 10.0+), make, cmake, git, python3 and SDL2 (version 2.0.12+), libGL and ZLib installed on your system.
    * If you wish to crosscompile, you will also need to have libraries and compilers for the target platform installed, e.g. `gcc-multilib` and `g++-multilib` for x86_64 -> i686 crosscompilation.
 2. Get the source code:  
-   `git clone -b port-net --recursive https://github.com/fgsfdsfgs/perfect_dark.git && cd perfect_dark`
+   `git clone -b port-net --recursive https://github.com/perfect-dark-pc-port/perfect_dark.git && cd perfect_dark`
 3. Run the following command:
    * ```cmake -G"Unix Makefiles" -Bbuild .```
    * Add ` -DROMID=pal-final` or ` -DROMID=jpn-final` at the end of the command if you want to build a PAL or JPN executable respectively.
@@ -167,7 +167,7 @@ Controls can be rebound in `pd.ini`. Default control scheme is as follows:
    * This installs SDL2 system-wide and this is how the automatic builds are done. The game will also look for it in the executable path, so you could
      download it locally instead.
 4. Get the source code:  
-   `git clone --recursive https://github.com/fgsfdsfgs/perfect_dark.git && cd perfect_dark`
+   `git clone --recursive https://github.com/perfect-dark-pc-port/perfect_dark.git && cd perfect_dark`
 5. Configure:
    * Execute command: `cmake -G"Unix Makefiles" -Bbuild -DCMAKE_OSX_ARCHITECTURES=x86_64 .`
    * Replace `x86_64` with `arm64` if building for an ARM64 Mac.
@@ -193,7 +193,7 @@ Controls can be rebound in `pd.ini`. Default control scheme is as follows:
      ```
    * If in MSYS2 or `dkp-pacman` doesn't work, replace it with just `pacman`.
 4. Get the source code:  
-   `git clone --recursive https://github.com/fgsfdsfgs/perfect_dark.git && cd perfect_dark`
+   `git clone --recursive https://github.com/perfect-dark-pc-port/perfect_dark.git && cd perfect_dark`
 5. Ensure devkitA64 environment variables are set:
    * Execute command: `source /opt/devkitpro/switchvars.sh`
    * If your `$DEVKITPRO` path is different, substitute that instead or set the variables manually.
