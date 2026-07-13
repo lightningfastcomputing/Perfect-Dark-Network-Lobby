@@ -1,0 +1,5 @@
+{
+  "port": "27100",
+  "max_clients": "8",
+  "player_name": "Player"
+}

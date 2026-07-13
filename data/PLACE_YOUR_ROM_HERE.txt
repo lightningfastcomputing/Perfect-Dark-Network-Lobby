@@ -1,0 +1,5 @@
+Place your legally obtained Perfect Dark NTSC-final ROM here with this filename:
+
+pd.ntsc-final.z64
+
+The ROM is intentionally not included in this repository/package.
