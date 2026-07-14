@@ -35,7 +35,7 @@ Close and reopen PowerShell after installation.
 ### Acquire or update and run the master server
 
 ```powershell
-$dir="$HOME\Perfect-Dark-Network-Lobby"; if(Test-Path "$dir\.git"){git -C $dir pull}else{git clone https://github.com/lightningfastcomputing/Perfect-Dark-Network-Lobby.git $dir}; Start-Process -FilePath "$dir\Perfect_Thork_Master.exe" -WorkingDirectory $dir
+$ErrorActionPreference="Stop"; $dir="$HOME\Perfect-Dark-Network-Lobby"; if(Test-Path "$dir\.git"){git -C $dir fetch origin; git -C $dir reset --hard origin/main}else{git clone https://github.com/lightningfastcomputing/Perfect-Dark-Network-Lobby.git $dir}; $exe="$dir\Perfect_Thork_Master.exe"; if(!(Test-Path $exe)){throw "Thorfect Dark Master executable was not found after updating: $exe"}; Start-Process -FilePath $exe -WorkingDirectory $dir
 ```
 
 This command:
