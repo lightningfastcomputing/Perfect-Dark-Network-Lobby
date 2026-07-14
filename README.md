@@ -30,14 +30,66 @@ After launch, both players are sent directly into the game's real network lobby.
 
 ## Quick start
 
-1. Supply your own legally obtained Perfect Dark NTSC-final ROM.
-2. Place it at:
+### One-command setup and launch
+
+Open **PowerShell**, paste the following command, and press Enter:
+
+```powershell
+$dir="$HOME\Perfect-Dark-Network-Lobby"; if(Test-Path "$dir\.git"){git -C $dir pull}else{git clone https://github.com/lightningfastcomputing/Perfect-Dark-Network-Lobby.git $dir}; $rom="$dir\data\pd.ntsc-final.z64"; if(!(Test-Path $rom)){Add-Type -AssemblyName System.Windows.Forms; $dialog=New-Object System.Windows.Forms.OpenFileDialog; $dialog.Title="Select your legally obtained Perfect Dark NTSC-final ROM"; $dialog.Filter="Nintendo 64 ROM files (*.z64;*.n64;*.v64)|*.z64;*.n64;*.v64|All files (*.*)|*.*"; if($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK){New-Item -ItemType Directory -Force "$dir\data"|Out-Null; Copy-Item $dialog.FileName $rom -Force}else{Write-Host "ROM selection cancelled."; exit}}; Start-Process -FilePath "$dir\Perfect_Dark_Lobby.exe" -WorkingDirectory $dir
+```
+
+This command:
+
+* Downloads the repository to:
+
+  ```text
+  C:\Users\YOUR_USERNAME\Perfect-Dark-Network-Lobby
+  ```
+
+* Updates the existing installation with `git pull` when it has already been downloaded
+
+* Checks for the required ROM at:
+
+  ```text
+  data/pd.ntsc-final.z64
+  ```
+
+* Opens a Windows ROM-selection dialog when the ROM is missing
+
+* Copies the selected ROM into the repository's `data` folder
+
+* Renames the copied ROM to the exact filename expected by the game:
+
+  ```text
+  pd.ntsc-final.z64
+  ```
+
+* Leaves the original ROM file untouched
+
+* Launches `Perfect_Dark_Lobby.exe` automatically
+
+The ROM dialog accepts `.z64`, `.n64`, and `.v64` files. Selecting a file with another name does not require manually renaming it—the setup command creates a copy using the required `pd.ntsc-final.z64` filename.
+
+If the ROM-selection dialog is cancelled, the launcher will not start. Run the same PowerShell command again when ready.
+
+> [!IMPORTANT]
+> The setup command does not download or include a Perfect Dark ROM. You must select your own legally obtained Perfect Dark NTSC-final ROM.
+
+### Manual setup
+
+Alternatively:
+
+1. Download or clone this repository.
+
+2. Supply your own legally obtained Perfect Dark NTSC-final ROM.
+
+3. Place it at:
 
    ```text
    data/pd.ntsc-final.z64
    ```
 
-3. Run:
+4. Run:
 
    ```text
    Perfect_Dark_Lobby.exe
@@ -59,6 +111,7 @@ After launch, both players are sent directly into the game's real network lobby.
 4. When ready, click **LAUNCH AS CLIENT**.
 
 The default port is `27100`.
+
 
 ## Cross-network / Internet play
 
