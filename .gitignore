@@ -1,0 +1,14 @@
+
+# Local/generated Perfect Dark files
+data/*.z64
+data/*.n64
+data/*.v64
+eeprom.bin
+mpsetups.bin
+perfect_thork_settings.json
+pd_lobby_settings.json
+build/
+dist/
+__pycache__/
+*.spec
+*.log

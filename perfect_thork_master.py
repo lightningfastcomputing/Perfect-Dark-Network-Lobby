@@ -10,10 +10,13 @@ from dataclasses import asdict, dataclass
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 STALE_AFTER_SECONDS = 45
 DEFAULT_PORT = 8088
+CHAT_HISTORY_LIMIT = 200
+CHAT_MESSAGE_LIMIT = 300
+CHAT_RATE_LIMIT_SECONDS = 0.75
 
 
 def detect_lan_ip() -> str:
@@ -38,6 +41,7 @@ class ServerEntry:
     name: str
     host_name: str
     public_ip: str
+    lan_ip: str
     port: int
     players: int
     max_players: int
@@ -53,6 +57,47 @@ class ServerEntry:
         data.pop("token", None)
         data["age_seconds"] = max(0, int(time.time() - self.updated_at))
         return data
+
+
+@dataclass
+class ChatMessage:
+    message_id: int
+    player: str
+    text: str
+    created_at: float
+
+    def public_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+class ChatStore:
+    def __init__(self) -> None:
+        self._messages: list[ChatMessage] = []
+        self._next_id = 1
+        self._last_post_by_ip: dict[str, float] = {}
+        self._lock = threading.RLock()
+
+    def list_after(self, after_id: int) -> list[dict[str, Any]]:
+        with self._lock:
+            return [message.public_dict() for message in self._messages if message.message_id > after_id]
+
+    def post(self, player: str, text: str, source_ip: str) -> ChatMessage:
+        now = time.time()
+        clean_player = " ".join(player.replace("\r", " ").replace("\n", " ").split())[:32] or "Player"
+        clean_text = " ".join(text.replace("\r", " ").replace("\n", " ").split())[:CHAT_MESSAGE_LIMIT]
+        if not clean_text:
+            raise ValueError("Message is empty")
+        with self._lock:
+            last = self._last_post_by_ip.get(source_ip, 0.0)
+            if now - last < CHAT_RATE_LIMIT_SECONDS:
+                raise RuntimeError("Please wait before sending another message")
+            self._last_post_by_ip[source_ip] = now
+            message = ChatMessage(self._next_id, clean_player, clean_text, now)
+            self._next_id += 1
+            self._messages.append(message)
+            if len(self._messages) > CHAT_HISTORY_LIMIT:
+                self._messages = self._messages[-CHAT_HISTORY_LIMIT:]
+            return message
 
 
 class Registry:
@@ -75,14 +120,17 @@ class Registry:
     def register(self, payload: dict[str, Any], source_ip: str) -> ServerEntry:
         server_id = secrets.token_urlsafe(10)
         token = secrets.token_urlsafe(24)
-        requested_ip = str(payload.get("advertised_ip", "")).strip()
-        public_ip = requested_ip if _valid_ipv4(requested_ip) else source_ip
+        requested_ip = _normalize_host(str(payload.get("advertised_ip", "")).strip())
+        public_ip = requested_ip if _valid_host(requested_ip) else source_ip
+        requested_lan = _normalize_host(str(payload.get("lan_ip", "")).strip())
+        lan_ip = requested_lan if _valid_ipv4(requested_lan) else ""
         entry = ServerEntry(
             server_id=server_id,
             token=token,
             name=str(payload.get("name", "Perfect Dark Server"))[:64],
             host_name=str(payload.get("host_name", "Host"))[:32],
             public_ip=public_ip,
+            lan_ip=lan_ip,
             port=_bounded_int(payload.get("port"), 1, 65535, 27100),
             players=_bounded_int(payload.get("players"), 0, 32, 1),
             max_players=_bounded_int(payload.get("max_players"), 1, 32, 8),
@@ -118,6 +166,37 @@ class Registry:
             return True
 
 
+def _normalize_host(value: str) -> str:
+    value = value.strip()
+    if not value:
+        return ""
+    # Accept values such as http://host, https://host:27100/path, or host:27100.
+    try:
+        parsed = urlparse(value if "://" in value else f"//{value}", scheme="")
+        host = parsed.hostname
+        if host:
+            return host.strip().rstrip(".")
+    except ValueError:
+        pass
+    return value.strip().rstrip(".")
+
+
+def _valid_host(value: str) -> bool:
+    if _valid_ipv4(value):
+        return True
+    if not value or len(value) > 253:
+        return False
+    labels = value.rstrip(".").split(".")
+    for label in labels:
+        if not label or len(label) > 63:
+            return False
+        if label[0] == "-" or label[-1] == "-":
+            return False
+        if not all(ch.isalnum() or ch == "-" for ch in label):
+            return False
+    return True
+
+
 def _valid_ipv4(value: str) -> bool:
     try:
         socket.inet_aton(value)
@@ -135,10 +214,11 @@ def _bounded_int(value: Any, minimum: int, maximum: int, default: int) -> int:
 
 
 REGISTRY = Registry()
+CHAT = ChatStore()
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "PerfectThorkMaster/0.2"
+    server_version = "PerfectThorkMaster/0.3.2"
 
     def log_message(self, fmt: str, *args: Any) -> None:
         print(f"[{self.log_date_time_string()}] {self.address_string()} {fmt % args}")
@@ -173,6 +253,13 @@ class Handler(BaseHTTPRequestHandler):
             self._send(HTTPStatus.OK, {"ok": True, "service": "Perfect Thork Master"})
         elif path == "/servers":
             self._send(HTTPStatus.OK, {"servers": REGISTRY.list_public(), "stale_after": STALE_AFTER_SECONDS})
+        elif path == "/chat":
+            query = parse_qs(urlparse(self.path).query)
+            try:
+                after_id = max(0, int(query.get("after", ["0"])[0]))
+            except ValueError:
+                after_id = 0
+            self._send(HTTPStatus.OK, {"messages": CHAT.list_after(after_id)})
         else:
             self._send(HTTPStatus.NOT_FOUND, {"error": "not_found"})
 
@@ -182,6 +269,17 @@ class Handler(BaseHTTPRequestHandler):
             payload = self._json_body()
         except (ValueError, json.JSONDecodeError, UnicodeDecodeError) as exc:
             self._send(HTTPStatus.BAD_REQUEST, {"error": "bad_request", "detail": str(exc)})
+            return
+
+        if path == "/chat/send":
+            try:
+                message = CHAT.post(str(payload.get("player", "Player")), str(payload.get("text", "")), self._client_ip())
+            except ValueError as exc:
+                self._send(HTTPStatus.BAD_REQUEST, {"error": "invalid_message", "detail": str(exc)})
+            except RuntimeError as exc:
+                self._send(HTTPStatus.TOO_MANY_REQUESTS, {"error": "rate_limited", "detail": str(exc)})
+            else:
+                self._send(HTTPStatus.CREATED, {"ok": True, "message": message.public_dict()})
             return
 
         if path == "/servers/register":

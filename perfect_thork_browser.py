@@ -16,6 +16,7 @@ APP_TITLE = "Perfect Thork"
 DEFAULT_MASTER = "http://127.0.0.1:8088"
 DEFAULT_PORT = 27100
 HEARTBEAT_SECONDS = 15
+CHAT_POLL_MS = 2000
 
 
 def base_dir() -> Path:
@@ -78,8 +79,8 @@ class PerfectThork(tk.Tk):
         super().__init__()
         settings = load_settings()
         self.title(APP_TITLE)
-        self.geometry("850x530")
-        self.minsize(760, 460)
+        self.geometry("920x700")
+        self.minsize(800, 600)
         self.protocol("WM_DELETE_WINDOW", self.close)
 
         self.master_url = tk.StringVar(value=str(settings["master"]))
@@ -91,9 +92,12 @@ class PerfectThork(tk.Tk):
         self.host_session: dict | None = None
         self.host_stop = threading.Event()
         self.server_rows: dict[str, dict] = {}
+        self.last_chat_id = 0
+        self.chat_polling = False
 
         self._build()
         self.after(200, self.refresh)
+        self.after(350, self.start_chat_polling)
 
     def _build(self) -> None:
         outer = ttk.Frame(self, padding=12)
@@ -124,14 +128,99 @@ class PerfectThork(tk.Tk):
         self.tree.grid(row=4, column=0, columnspan=4, sticky="nsew", pady=10)
         self.tree.bind("<Double-1>", lambda _e: self.join_selected())
 
+        chat_frame = ttk.LabelFrame(outer, text="Master Lobby Chat", padding=8)
+        chat_frame.grid(row=5, column=0, columnspan=4, sticky="nsew", pady=(0, 10))
+        chat_frame.columnconfigure(0, weight=1)
+        chat_frame.rowconfigure(0, weight=1)
+
+        self.chat_text = tk.Text(chat_frame, height=8, wrap="word", state="disabled")
+        self.chat_text.grid(row=0, column=0, columnspan=2, sticky="nsew")
+        chat_scroll = ttk.Scrollbar(chat_frame, orient="vertical", command=self.chat_text.yview)
+        chat_scroll.grid(row=0, column=2, sticky="ns")
+        self.chat_text.configure(yscrollcommand=chat_scroll.set)
+
+        self.chat_entry = ttk.Entry(chat_frame)
+        self.chat_entry.grid(row=1, column=0, sticky="ew", pady=(8, 0), padx=(0, 8))
+        self.chat_entry.bind("<Return>", lambda _event: self.send_chat())
+        ttk.Button(chat_frame, text="SEND", command=self.send_chat).grid(row=1, column=1, columnspan=2, sticky="e", pady=(8, 0))
+
         controls = ttk.Frame(outer)
-        controls.grid(row=5, column=0, columnspan=4, sticky="ew")
+        controls.grid(row=6, column=0, columnspan=4, sticky="ew")
         ttk.Button(controls, text="REFRESH", command=self.refresh).pack(side="left", padx=(0, 6), ipady=5)
         ttk.Button(controls, text="HOST PUBLIC GAME", command=self.host_public).pack(side="left", padx=6, ipady=5)
         ttk.Button(controls, text="JOIN SELECTED", command=self.join_selected).pack(side="left", padx=6, ipady=5)
         ttk.Button(controls, text="STOP ADVERTISING", command=self.stop_advertising).pack(side="left", padx=6, ipady=5)
 
-        ttk.Label(outer, textvariable=self.status, relief="sunken", anchor="w").grid(row=6, column=0, columnspan=4, sticky="ew", pady=(10, 0))
+        ttk.Label(outer, textvariable=self.status, relief="sunken", anchor="w").grid(row=7, column=0, columnspan=4, sticky="ew", pady=(10, 0))
+
+
+    def start_chat_polling(self) -> None:
+        if self.chat_polling:
+            return
+        self.chat_polling = True
+        self._poll_chat()
+
+    def _poll_chat(self) -> None:
+        if not self.chat_polling:
+            return
+        threading.Thread(target=self._chat_worker, daemon=True).start()
+        self.after(CHAT_POLL_MS, self._poll_chat)
+
+    def _chat_worker(self) -> None:
+        try:
+            result = api(self.master_url.get().strip(), f"/chat?after={self.last_chat_id}", timeout=4)
+            messages = result.get("messages", [])
+            if isinstance(messages, list) and messages:
+                self.after(0, lambda items=messages: self._append_chat_messages(items))
+        except (URLError, HTTPError, OSError, ValueError):
+            pass
+
+    def _append_chat_messages(self, messages: list[dict]) -> None:
+        self.chat_text.configure(state="normal")
+        for message in messages:
+            try:
+                message_id = int(message.get("message_id", 0))
+            except (TypeError, ValueError):
+                message_id = 0
+            if message_id <= self.last_chat_id:
+                continue
+            self.last_chat_id = message_id
+            player = str(message.get("player", "Player"))
+            text = str(message.get("text", ""))
+            created_at = message.get("created_at")
+            try:
+                stamp = time.strftime("%H:%M", time.localtime(float(created_at)))
+            except (TypeError, ValueError, OSError):
+                stamp = "--:--"
+            self.chat_text.insert("end", f"[{stamp}] {player}: {text}\n")
+        self.chat_text.configure(state="disabled")
+        self.chat_text.see("end")
+
+    def send_chat(self) -> None:
+        text = self.chat_entry.get().strip()
+        if not text:
+            return
+        player = self.player.get().strip() or "Player"
+        self.chat_entry.delete(0, "end")
+        self._remember()
+        threading.Thread(target=self._send_chat_worker, args=(player, text), daemon=True).start()
+
+    def _send_chat_worker(self, player: str, text: str) -> None:
+        try:
+            result = api(self.master_url.get().strip(), "/chat/send", {"player": player, "text": text}, timeout=5)
+            message = result.get("message")
+            if isinstance(message, dict):
+                self.after(0, lambda: self._append_chat_messages([message]))
+        except HTTPError as exc:
+            detail = str(exc)
+            try:
+                body = json.loads(exc.read().decode("utf-8"))
+                detail = str(body.get("detail", detail))
+            except Exception:
+                pass
+            self.after(0, lambda d=detail: self.status.set(f"Chat send failed: {d}"))
+        except (URLError, OSError, ValueError) as exc:
+            self.after(0, lambda e=exc: self.status.set(f"Chat send failed: {e}"))
 
     def _remember(self) -> None:
         try:
@@ -188,6 +277,7 @@ class PerfectThork(tk.Tk):
             "host_name": self.player.get().strip() or "Host",
             "port": port,
             "advertised_ip": self.advertised_ip.get().strip() or detect_lan_ip(),
+            "lan_ip": detect_lan_ip(),
             "players": 1,
             "max_players": 8,
             "map_name": "Select in lobby",
@@ -248,7 +338,26 @@ class PerfectThork(tk.Tk):
             messagebox.showerror(APP_TITLE, f"Place this browser beside the game executable:\n{GAME_EXE}")
             return
         server = self.server_rows[selected[0]]
-        address = f"{server['public_ip']}:{server['port']}"
+        public_host = str(server.get("public_ip", "")).strip()
+        lan_host = str(server.get("lan_ip", "")).strip()
+        local_ip = detect_lan_ip()
+
+        # Prefer the host's LAN address when both machines appear to share
+        # the same IPv4 /24 subnet. Otherwise use the public/DDNS address.
+        connect_host = public_host
+        try:
+            local_parts = local_ip.split(".")
+            lan_parts = lan_host.split(".")
+            if len(local_parts) == 4 and len(lan_parts) == 4 and local_parts[:3] == lan_parts[:3]:
+                connect_host = lan_host
+        except Exception:
+            pass
+
+        if not connect_host:
+            messagebox.showerror(APP_TITLE, "The selected server has no usable address.")
+            return
+
+        address = f"{connect_host}:{server['port']}"
         try:
             subprocess.Popen([str(GAME_EXE), "--portable", "--skip-intro", "--connect", address], cwd=str(BASE_DIR))
         except OSError as exc:
@@ -257,6 +366,7 @@ class PerfectThork(tk.Tk):
         self.status.set(f"Joining {server.get('name', 'server')} at {address}")
 
     def close(self) -> None:
+        self.chat_polling = False
         self._remember()
         self.stop_advertising(silent=True)
         self.destroy()
