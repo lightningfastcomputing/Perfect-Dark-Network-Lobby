@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import ipaddress
 import socket
 import subprocess
 import sys
@@ -12,7 +13,7 @@ from tkinter import messagebox, simpledialog, ttk
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-APP_TITLE = "Perfect Thork"
+APP_TITLE = "Thorfect Dark"
 DEFAULT_MASTER = "http://127.0.0.1:8088"
 DEFAULT_PORT = 27100
 HEARTBEAT_SECONDS = 15
@@ -92,6 +93,7 @@ class PerfectThork(tk.Tk):
         self.host_session: dict | None = None
         self.host_stop = threading.Event()
         self.server_rows: dict[str, dict] = {}
+        self.requester_ip = ""
         self.last_chat_id = 0
         self.chat_polling = False
 
@@ -106,8 +108,8 @@ class PerfectThork(tk.Tk):
         outer.columnconfigure(3, weight=1)
         outer.rowconfigure(4, weight=1)
 
-        ttk.Label(outer, text="Perfect Thork", font=("Segoe UI", 20, "bold")).grid(row=0, column=0, columnspan=4, sticky="w")
-        ttk.Label(outer, text="Perfect Dark public server browser prototype").grid(row=1, column=0, columnspan=4, sticky="w", pady=(0, 10))
+        ttk.Label(outer, text="Thorfect Dark", font=("Segoe UI", 20, "bold")).grid(row=0, column=0, columnspan=4, sticky="w")
+        ttk.Label(outer, text="Perfect Dark public server browser and lobby").grid(row=1, column=0, columnspan=4, sticky="w", pady=(0, 10))
 
         ttk.Label(outer, text="Master URL:").grid(row=2, column=0, sticky="w")
         ttk.Entry(outer, textvariable=self.master_url).grid(row=2, column=1, sticky="ew", padx=(6, 12))
@@ -237,18 +239,20 @@ class PerfectThork(tk.Tk):
         try:
             result = api(self.master_url.get().strip(), "/servers")
             servers = result.get("servers", [])
+            requester_ip = str(result.get("requester_ip", "")).strip()
             if not isinstance(servers, list):
                 raise ValueError("Invalid server list")
-            self.after(0, lambda: self._show_servers(servers))
+            self.after(0, lambda: self._show_servers(servers, requester_ip))
         except (URLError, HTTPError, OSError, ValueError) as exc:
             self.after(0, lambda: self.status.set(f"Master unavailable: {exc}"))
 
-    def _show_servers(self, servers: list[dict]) -> None:
+    def _show_servers(self, servers: list[dict], requester_ip: str = "") -> None:
+        self.requester_ip = requester_ip
         self.tree.delete(*self.tree.get_children())
         self.server_rows.clear()
         for server in servers:
             sid = str(server.get("server_id", ""))
-            address = f"{server.get('public_ip', '')}:{server.get('port', DEFAULT_PORT)}"
+            address = f"{server.get('public_host', server.get('public_ip', ''))}:{server.get('port', DEFAULT_PORT)}"
             values = (
                 server.get("name", "Unnamed"), server.get("host_name", "Host"),
                 f"{server.get('players', 0)}/{server.get('max_players', 8)}",
@@ -283,7 +287,7 @@ class PerfectThork(tk.Tk):
             "map_name": "Select in lobby",
             "mode": "Combat Simulator",
             "status": "Lobby",
-            "version": "prototype-1",
+            "version": "thorfect-1.0.3",
         }
         try:
             session = api(self.master_url.get().strip(), "/servers/register", payload)
@@ -329,6 +333,19 @@ class PerfectThork(tk.Tk):
             self.status.set("Stopped advertising")
             self.after(200, self.refresh)
 
+    @staticmethod
+    def _same_private_subnet(left: str, right: str) -> bool:
+        try:
+            left_ip = ipaddress.ip_address(left)
+            right_ip = ipaddress.ip_address(right)
+        except ValueError:
+            return False
+        if left_ip.version != 4 or right_ip.version != 4:
+            return False
+        if not left_ip.is_private or not right_ip.is_private:
+            return False
+        return left.split(".")[:3] == right.split(".")[:3]
+
     def join_selected(self) -> None:
         selected = self.tree.selection()
         if not selected:
@@ -337,21 +354,27 @@ class PerfectThork(tk.Tk):
         if not GAME_EXE.is_file():
             messagebox.showerror(APP_TITLE, f"Place this browser beside the game executable:\n{GAME_EXE}")
             return
-        server = self.server_rows[selected[0]]
-        public_host = str(server.get("public_ip", "")).strip()
-        lan_host = str(server.get("lan_ip", "")).strip()
-        local_ip = detect_lan_ip()
 
-        # Prefer the host's LAN address when both machines appear to share
-        # the same IPv4 /24 subnet. Otherwise use the public/DDNS address.
+        server = self.server_rows[selected[0]]
+        public_host = str(
+            server.get("public_host", server.get("public_ip", ""))
+        ).strip()
+        lan_ip = str(server.get("lan_ip", "")).strip()
+        host_observed_ip = str(server.get("observed_ip", "")).strip()
+        requester_ip = self.requester_ip.strip()
+
         connect_host = public_host
-        try:
-            local_parts = local_ip.split(".")
-            lan_parts = lan_host.split(".")
-            if len(local_parts) == 4 and len(lan_parts) == 4 and local_parts[:3] == lan_parts[:3]:
-                connect_host = lan_host
-        except Exception:
-            pass
+        route = "public"
+
+        # Use the LAN endpoint only when the master can establish that host
+        # and client are behind the same public connection. This preserves
+        # local play without replacing or rewriting the advertised hostname.
+        if lan_ip and requester_ip and host_observed_ip and requester_ip == host_observed_ip:
+            connect_host = lan_ip
+            route = "LAN"
+        elif lan_ip and self._same_private_subnet(requester_ip, host_observed_ip):
+            connect_host = lan_ip
+            route = "LAN"
 
         if not connect_host:
             messagebox.showerror(APP_TITLE, "The selected server has no usable address.")
@@ -359,11 +382,17 @@ class PerfectThork(tk.Tk):
 
         address = f"{connect_host}:{server['port']}"
         try:
-            subprocess.Popen([str(GAME_EXE), "--portable", "--skip-intro", "--connect", address], cwd=str(BASE_DIR))
+            subprocess.Popen(
+                [str(GAME_EXE), "--portable", "--skip-intro", "--connect", address],
+                cwd=str(BASE_DIR),
+            )
         except OSError as exc:
             messagebox.showerror(APP_TITLE, f"Could not launch Perfect Dark:\n{exc}")
             return
-        self.status.set(f"Joining {server.get('name', 'server')} at {address}")
+
+        self.status.set(
+            f"Joining {server.get('name', 'server')} via {route} at {address}"
+        )
 
     def close(self) -> None:
         self.chat_polling = False

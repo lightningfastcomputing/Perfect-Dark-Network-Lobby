@@ -40,8 +40,9 @@ class ServerEntry:
     token: str
     name: str
     host_name: str
-    public_ip: str
+    public_host: str
     lan_ip: str
+    observed_ip: str
     port: int
     players: int
     max_players: int
@@ -120,17 +121,20 @@ class Registry:
     def register(self, payload: dict[str, Any], source_ip: str) -> ServerEntry:
         server_id = secrets.token_urlsafe(10)
         token = secrets.token_urlsafe(24)
-        requested_ip = _normalize_host(str(payload.get("advertised_ip", "")).strip())
-        public_ip = requested_ip if _valid_host(requested_ip) else source_ip
+        requested_host = _normalize_host(str(payload.get("advertised_ip", "")).strip())
+        public_host = requested_host if _valid_host(requested_host) else source_ip
+
         requested_lan = _normalize_host(str(payload.get("lan_ip", "")).strip())
         lan_ip = requested_lan if _valid_ipv4(requested_lan) else ""
+
         entry = ServerEntry(
             server_id=server_id,
             token=token,
             name=str(payload.get("name", "Perfect Dark Server"))[:64],
             host_name=str(payload.get("host_name", "Host"))[:32],
-            public_ip=public_ip,
+            public_host=public_host,
             lan_ip=lan_ip,
+            observed_ip=source_ip,
             port=_bounded_int(payload.get("port"), 1, 65535, 27100),
             players=_bounded_int(payload.get("players"), 0, 32, 1),
             max_players=_bounded_int(payload.get("max_players"), 1, 32, 8),
@@ -170,15 +174,16 @@ def _normalize_host(value: str) -> str:
     value = value.strip()
     if not value:
         return ""
-    # Accept values such as http://host, https://host:27100/path, or host:27100.
+
     try:
-        parsed = urlparse(value if "://" in value else f"//{value}", scheme="")
+        parsed = urlparse(value if "://" in value else f"//{value}")
         host = parsed.hostname
         if host:
             return host.strip().rstrip(".")
     except ValueError:
         pass
-    return value.strip().rstrip(".")
+
+    return value.rstrip(".")
 
 
 def _valid_host(value: str) -> bool:
@@ -186,13 +191,14 @@ def _valid_host(value: str) -> bool:
         return True
     if not value or len(value) > 253:
         return False
+
     labels = value.rstrip(".").split(".")
     for label in labels:
         if not label or len(label) > 63:
             return False
-        if label[0] == "-" or label[-1] == "-":
+        if label.startswith("-") or label.endswith("-"):
             return False
-        if not all(ch.isalnum() or ch == "-" for ch in label):
+        if not all(char.isalnum() or char == "-" for char in label):
             return False
     return True
 
@@ -218,7 +224,7 @@ CHAT = ChatStore()
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "PerfectThorkMaster/0.3.2"
+    server_version = "ThorfectDarkMaster/1.0.3"
 
     def log_message(self, fmt: str, *args: Any) -> None:
         print(f"[{self.log_date_time_string()}] {self.address_string()} {fmt % args}")
@@ -250,9 +256,13 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         path = urlparse(self.path).path
         if path == "/health":
-            self._send(HTTPStatus.OK, {"ok": True, "service": "Perfect Thork Master"})
+            self._send(HTTPStatus.OK, {"ok": True, "service": "Thorfect Dark Master"})
         elif path == "/servers":
-            self._send(HTTPStatus.OK, {"servers": REGISTRY.list_public(), "stale_after": STALE_AFTER_SECONDS})
+            self._send(HTTPStatus.OK, {
+                "servers": REGISTRY.list_public(),
+                "stale_after": STALE_AFTER_SECONDS,
+                "requester_ip": self._client_ip(),
+            })
         elif path == "/chat":
             query = parse_qs(urlparse(self.path).query)
             try:
@@ -334,7 +344,7 @@ def run_gui() -> int:
     class MasterGUI(tk.Tk):
         def __init__(self) -> None:
             super().__init__()
-            self.title("Perfect Thork Master")
+            self.title("Thorfect Dark Master")
             self.geometry("590x310")
             self.resizable(False, False)
             self.server: ReusableThreadingHTTPServer | None = None
@@ -351,7 +361,7 @@ def run_gui() -> int:
             frame.pack(fill="both", expand=True)
             frame.columnconfigure(1, weight=1)
 
-            ttk.Label(frame, text="Perfect Thork Master", font=("Segoe UI", 20, "bold")).grid(row=0, column=0, columnspan=3, sticky="w")
+            ttk.Label(frame, text="Thorfect Dark Master", font=("Segoe UI", 20, "bold")).grid(row=0, column=0, columnspan=3, sticky="w")
             ttk.Label(frame, text="Public server-list registry").grid(row=1, column=0, columnspan=3, sticky="w", pady=(0, 16))
 
             ttk.Label(frame, text="Detected LAN IP:").grid(row=2, column=0, sticky="w", pady=5)
@@ -386,13 +396,13 @@ def run_gui() -> int:
                 if not 1 <= port <= 65535:
                     raise ValueError
             except ValueError:
-                messagebox.showerror("Perfect Thork Master", "Enter a valid TCP port from 1 to 65535.")
+                messagebox.showerror("Thorfect Dark Master", "Enter a valid TCP port from 1 to 65535.")
                 return
             bind_ip = self.bind_ip.get().strip() or "0.0.0.0"
             try:
                 self.server = ReusableThreadingHTTPServer((bind_ip, port), Handler)
             except OSError as exc:
-                messagebox.showerror("Perfect Thork Master", f"Could not start the master:\n{exc}")
+                messagebox.showerror("Thorfect Dark Master", f"Could not start the master:\n{exc}")
                 self.server = None
                 return
             self.server_thread = threading.Thread(target=self.server.serve_forever, daemon=True)
@@ -421,7 +431,7 @@ def run_gui() -> int:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Perfect Thork master-server")
+    parser = argparse.ArgumentParser(description="Thorfect Dark master-server")
     parser.add_argument("--host", default=None, help="Run without GUI and bind to this address")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument("--gui", action="store_true", help="Force the GUI")
