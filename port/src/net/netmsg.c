@@ -1568,6 +1568,75 @@ u32 netmsgSvcPropLiftRead(struct netbuf *src, struct netclient *srccl)
 	return src->error;
 }
 
+u32 netmsgSvcBotStateWrite(struct netbuf *dst, struct chrdata *chr, u8 botnum)
+{
+	if (!chr || !chr->prop || !chr->model) {
+		return dst->error;
+	}
+
+	netbufWriteU8(dst, SVC_BOT_STATE);
+	netbufWriteU8(dst, botnum);
+	netbufWriteU32(dst, chr->prop->syncid);
+	netbufWriteCoord(dst, &chr->prop->pos);
+	netbufWriteRooms(dst, chr->prop->rooms, ARRAYCOUNT(chr->prop->rooms));
+	netbufWriteF32(dst, modelGetChrRotY(chr->model));
+
+	return dst->error;
+}
+
+u32 netmsgSvcBotStateRead(struct netbuf *src, struct netclient *srccl)
+{
+	const u8 botnum = netbufReadU8(src);
+	const u32 syncid = netbufReadU32(src);
+	struct coord pos;
+	RoomNum rooms[8] = { -1 };
+	netbufReadCoord(src, &pos);
+	netbufReadRooms(src, rooms, ARRAYCOUNT(rooms));
+	const f32 roty = netbufReadF32(src);
+
+
+	if (src->error || srccl->state < CLSTATE_GAME) {
+		return src->error;
+	}
+
+	if (botnum >= g_BotCount) {
+		sysLogPrintf(
+			LOG_WARNING,
+			"NET: SVC_BOT_STATE invalid bot index %u, count=%u",
+			botnum,
+			g_BotCount
+		);
+		return 0;
+	}
+
+	struct chrdata *chr = g_MpBotChrPtrs[botnum];
+
+	if (!chr || !chr->prop || !chr->model) {
+		sysLogPrintf(
+			LOG_WARNING,
+			"NET: SVC_BOT_STATE bot %u has no client replica",
+			botnum
+		);
+		return 0;
+	}
+
+	if (chr->prop->syncid != syncid) {
+		sysLogPrintf(
+			LOG_NOTE,
+			"NET: correcting bot %u syncid from %u to %u",
+			botnum,
+			chr->prop->syncid,
+			syncid
+		);
+		chr->prop->syncid = syncid;
+	}
+
+	chrSetPos(chr, &pos, rooms, roty, false);
+	modelSetChrRotY(chr->model, roty);
+
+	return src->error;
+}
+
 u32 netmsgSvcChrDamageWrite(struct netbuf *dst, struct chrdata *chr, f32 damage, struct coord *vector, struct gset *gset,
 		struct prop *aprop, s32 hitpart, bool damageshield, struct prop *prop2, s32 side, s16 *arg11, bool explosion, struct coord *explosionpos)
 {

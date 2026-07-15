@@ -766,6 +766,7 @@ static void netClientEvReceive(struct netclient *cl)
 			case SVC_PROP_USE: rc = netmsgSvcPropUseRead(&cl->in, cl); break;
 			case SVC_PROP_DOOR: rc = netmsgSvcPropDoorRead(&cl->in, cl); break;
 			case SVC_PROP_LIFT: rc = netmsgSvcPropLiftRead(&cl->in, cl); break;
+			case SVC_BOT_STATE: rc = netmsgSvcBotStateRead(&cl->in, cl); break;
 			case SVC_CHR_DAMAGE: rc = netmsgSvcChrDamageRead(&cl->in, cl); break;
 			case SVC_CHR_DISARM: rc = netmsgSvcChrDisarmRead(&cl->in, cl); break;
 			default:
@@ -906,6 +907,14 @@ void netEndFrame(void)
 				}
 			}
 			if (g_NetNextUpdate <= g_NetTick) {
+				for (u8 i = 0; i < g_BotCount; ++i) {
+					struct chrdata *botchr = g_MpBotChrPtrs[i];
+
+					if (botchr && botchr->prop && botchr->model) {
+						netmsgSvcBotStateWrite(&g_NetMsg, botchr, i);
+					}
+				}
+
 				g_NetNextUpdate = g_NetTick + g_NetServerUpdateRate;
 			}
 		}
