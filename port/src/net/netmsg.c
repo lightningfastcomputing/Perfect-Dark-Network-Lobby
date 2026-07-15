@@ -141,7 +141,30 @@ static inline struct prop *netbufReadPropPtr(struct netbuf *buf)
 		}
 	}
 
-	sysLogPrintf(LOG_WARNING, "NET: prop with syncid %u does not exist", syncid);
+	if (syncid > 0 && syncid <= (u32)g_Vars.maxprops) {
+		struct prop *expected = &g_Vars.props[syncid - 1];
+
+		sysLogPrintf(
+			LOG_WARNING,
+			"NET: prop with syncid %u does not exist; "
+			"expected slot=%u has syncid=%u type=%u active=%u chr=%u bot=%u",
+			syncid,
+			syncid - 1,
+			expected->syncid,
+			expected->type,
+			expected->active,
+			expected->chr != NULL,
+			expected->chr != NULL && expected->chr->aibot != NULL
+		);
+	} else {
+		sysLogPrintf(
+			LOG_WARNING,
+			"NET: prop with syncid %u does not exist; maxprops=%d",
+			syncid,
+			g_Vars.maxprops
+		);
+	}
+
 	return NULL;
 }
 
@@ -531,6 +554,24 @@ u32 netmsgSvcStageStartWrite(struct netbuf *dst)
 	netbufWriteU32(dst, g_MpSetup.options);
 	netbufWriteData(dst, g_MpSetup.weapons, sizeof(g_MpSetup.weapons));
 
+	/*
+	 * Simulants are allocated independently on every peer during mpStartMatch.
+	 * Send the authoritative host configuration first so each peer constructs
+	 * the same bodies, heads, teams, types and difficulties.
+	 */
+	netbufWriteU8(dst, MAX_BOTS);
+
+	for (s32 i = 0; i < MAX_BOTS; ++i) {
+		struct mpbotconfig *bot = &g_BotConfigsArray[i];
+
+		netbufWriteU8(dst, bot->base.mpheadnum);
+		netbufWriteU8(dst, bot->base.mpbodynum);
+		netbufWriteU8(dst, bot->base.team);
+		netbufWriteU8(dst, bot->type);
+		netbufWriteU8(dst, bot->difficulty);
+		netbufWriteStr(dst, bot->base.name);
+	}
+
 	// who the fuck is in the game
 	netbufWriteU8(dst, g_NetNumClients);
 	for (s32 i = 0; i < g_NetMaxClients; ++i) {
@@ -587,6 +628,41 @@ u32 netmsgSvcStageStartRead(struct netbuf *src, struct netclient *srccl)
 	g_MpSetup.options = netbufReadU32(src);
 	netbufReadData(src, g_MpSetup.weapons, sizeof(g_MpSetup.weapons));
 	strcpy(g_MpSetup.name, "server");
+
+	/*
+	 * Read bot configs before mpStartMatch so botmgrAllocateBot constructs
+	 * client replicas from the host's authoritative configuration.
+	 */
+	const u8 numbotconfigs = netbufReadU8(src);
+
+	if (src->error || numbotconfigs != MAX_BOTS) {
+		sysLogPrintf(
+			LOG_WARNING,
+			"NET: malformed bot config count in SVC_STAGE (%u)",
+			numbotconfigs
+		);
+		return 1;
+	}
+
+	for (u32 i = 0; i < MAX_BOTS; ++i) {
+		struct mpbotconfig *bot = &g_BotConfigsArray[i];
+
+		bot->base.mpheadnum = netbufReadU8(src);
+		bot->base.mpbodynum = netbufReadU8(src);
+		bot->base.team = netbufReadU8(src);
+		bot->type = netbufReadU8(src);
+		bot->difficulty = netbufReadU8(src);
+
+		const char *name = netbufReadStr(src);
+
+		if (name) {
+			strncpy(bot->base.name, name, sizeof(bot->base.name) - 1);
+			bot->base.name[sizeof(bot->base.name) - 1] = '\0';
+		} else {
+			sysLogPrintf(LOG_WARNING, "NET: malformed bot name in SVC_STAGE");
+			return 1;
+		}
+	}
 
 	if (src->error) {
 		sysLogPrintf(LOG_WARNING, "NET: malformed SVC_STAGE from server");
@@ -1561,6 +1637,11 @@ u32 netmsgSvcChrDamageRead(struct netbuf *src, struct netclient *srccl)
 
 	if (src->error || srccl->state < CLSTATE_GAME) {
 		return src->error;
+	}
+
+	if (chrprop == NULL || chrprop->chr == NULL) {
+		sysLogPrintf(LOG_WARNING, "NET: SVC_CHR_DAMAGE target character does not exist");
+		return 0;
 	}
 
 	const bool damageshield = (flags & (1 << 0)) != 0;
