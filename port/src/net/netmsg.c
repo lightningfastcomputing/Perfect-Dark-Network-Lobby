@@ -8,6 +8,7 @@
 #include "lib/model.h"
 #include "game/mplayer/mplayer.h"
 #include "game/chr.h"
+#include "game/bot.h"
 #include "game/chraction.h"
 #include "game/prop.h"
 #include "game/propobj.h"
@@ -147,14 +148,12 @@ static inline struct prop *netbufReadPropPtr(struct netbuf *buf)
 		sysLogPrintf(
 			LOG_WARNING,
 			"NET: prop with syncid %u does not exist; "
-			"expected slot=%u has syncid=%u type=%u active=%u chr=%u bot=%u",
+			"expected slot=%u has syncid=%u type=%u active=%u",
 			syncid,
 			syncid - 1,
 			expected->syncid,
 			expected->type,
-			expected->active,
-			expected->chr != NULL,
-			expected->chr != NULL && expected->chr->aibot != NULL
+			expected->active
 		);
 	} else {
 		sysLogPrintf(
@@ -754,6 +753,20 @@ u32 netmsgSvcPlayerStatsWrite(struct netbuf *dst, struct netclient *actcl)
 	netbufWriteF32(dst, pl->prop->chr->cshield);
 	netbufWriteCoord(dst, &pl->bondshotspeed);
 
+	/*
+	 * lastshooter is a multiplayer-character index and may identify a Sim.
+	 * Send the authoritative value instead of making clients infer it from
+	 * incomplete local attacker props.
+	 */
+	s16 deathshooter = -1;
+
+	if (pl->prop->chr->lastshooter >= 0
+			&& pl->prop->chr->timeshooter > 0) {
+		deathshooter = pl->prop->chr->lastshooter;
+	}
+
+	netbufWriteS16(dst, deathshooter);
+
 	for (s32 i = 0; i < 2; ++i) {
 		if (pl->hands[i].inuse) {
 			netbufWriteS16(dst, pl->hands[i].loadedammo[0]);
@@ -790,6 +803,7 @@ u32 netmsgSvcPlayerStatsRead(struct netbuf *src, struct netclient *srccl)
 	const f32 newhealth = netbufReadF32(src);
 	const f32 newshield = netbufReadF32(src);
 	struct coord newshotspeed; netbufReadCoord(src, &newshotspeed);
+	const s16 deathshooter = netbufReadS16(src);
 	const bool handused[2] = { (flags & (1 << 2)) != 0, (flags & (1 << 3)) != 0 };
 
 	if (src->error) {
@@ -833,11 +847,25 @@ u32 netmsgSvcPlayerStatsRead(struct netbuf *src, struct netclient *srccl)
 	const bool newisdead = (flags & (1 << 0)) != 0;
 	if (!pl->isdead && newisdead) {
 		s16 shooter;
-		if (pl->prop->chr->lastshooter >= 0 && pl->prop->chr->timeshooter > 0) {
-			shooter = pl->prop->chr->lastshooter;
+		/*
+		 * Use the host's authoritative multiplayer-character index. This may
+		 * identify either a real player or a Sim.
+		 */
+		if (deathshooter >= 0 && deathshooter < g_MpNumChrs) {
+			shooter = deathshooter;
 		} else {
-			shooter = g_Vars.currentplayernum;
+			sysLogPrintf(
+				LOG_WARNING,
+				"NET: invalid authoritative death shooter %d; "
+				"mpchrs=%d, using victim index %d",
+				deathshooter,
+				g_MpNumChrs,
+				g_Vars.currentplayerstats->mpindex
+			);
+
+			shooter = g_Vars.currentplayerstats->mpindex;
 		}
+
 		playerDieByShooter(shooter, true);
 	} else if (pl->isdead && !newisdead) {
 		playerStartNewLife();
@@ -1481,7 +1509,40 @@ u32 netmsgSvcBotStateWrite(struct netbuf *dst, struct chrdata *chr, u8 botnum)
 	netbufWriteU32(dst, chr->prop->syncid);
 	netbufWriteCoord(dst, &chr->prop->pos);
 	netbufWriteRooms(dst, chr->prop->rooms, ARRAYCOUNT(chr->prop->rooms));
-	netbufWriteF32(dst, modelGetChrRotY(chr->model));
+
+	const f32 bodyroty = chrGetRotY(chr);
+	const f32 lookangle = chrGetInverseTheta(chr);
+	const f32 modelroty = modelGetChrRotY(chr->model);
+	const f32 angleoffset = chr->aibot ? chr->aibot->angleoffset : 0.0f;
+	const s8 weaponnum = chr->aibot
+			? chr->aibot->weaponnum
+			: WEAPON_UNARMED;
+	const u8 gunfunc = chr->aibot
+			? chr->aibot->gunfunc
+			: FUNC_PRIMARY;
+
+	netbufWriteF32(dst, bodyroty);
+	netbufWriteF32(dst, lookangle);
+	netbufWriteF32(dst, modelroty);
+	netbufWriteF32(dst, angleoffset);
+	netbufWriteS8(dst, weaponnum);
+	netbufWriteU8(dst, gunfunc);
+
+	/*
+	 * These are presentation counters only on the client. The server still
+	 * performs all firing decisions, hit detection and damage.
+	 */
+	netbufWriteU8(dst, chr->firecount[HAND_RIGHT]);
+	netbufWriteU8(dst, chr->firecount[HAND_LEFT]);
+	netbufWriteS8(dst, chr->fireslots[HAND_RIGHT]);
+	netbufWriteS8(dst, chr->fireslots[HAND_LEFT]);
+
+	/*
+	 * Replicate enough lifecycle state to distinguish a living bot from a
+	 * dying corpse and to detect an authoritative host-side respawn.
+	 */
+	netbufWriteU8(dst, chr->actiontype);
+	netbufWriteF32(dst, chr->damage);
 
 	return dst->error;
 }
@@ -1494,8 +1555,19 @@ u32 netmsgSvcBotStateRead(struct netbuf *src, struct netclient *srccl)
 	RoomNum rooms[8] = { -1 };
 	netbufReadCoord(src, &pos);
 	netbufReadRooms(src, rooms, ARRAYCOUNT(rooms));
-	const f32 roty = netbufReadF32(src);
 
+	const f32 bodyroty = netbufReadF32(src);
+	const f32 lookangle = netbufReadF32(src);
+	const f32 modelroty = netbufReadF32(src);
+	const f32 angleoffset = netbufReadF32(src);
+	const s8 weaponnum = netbufReadS8(src);
+	const u8 gunfunc = netbufReadU8(src);
+	const u8 firecount_right = netbufReadU8(src);
+	const u8 firecount_left = netbufReadU8(src);
+	const s8 fireslot_right = netbufReadS8(src);
+	const s8 fireslot_left = netbufReadS8(src);
+	const u8 hostactiontype = netbufReadU8(src);
+	const f32 hostdamage = netbufReadF32(src);
 
 	if (src->error || srccl->state < CLSTATE_GAME) {
 		return src->error;
@@ -1533,8 +1605,76 @@ u32 netmsgSvcBotStateRead(struct netbuf *src, struct netclient *srccl)
 		chr->prop->syncid = syncid;
 	}
 
-	chrSetPos(chr, &pos, rooms, roty, false);
-	modelSetChrRotY(chr->model, roty);
+	const bool hostdead =
+			hostactiontype == ACT_DIE || hostactiontype == ACT_DEAD;
+	const bool clientdead =
+			chr->actiontype == ACT_DIE || chr->actiontype == ACT_DEAD;
+
+	/*
+	 * The authoritative host reuses the same bot after botSpawn(chr, true).
+	 * If the host is alive again while our replica is still a corpse, perform
+	 * the same local reset once before applying the new authoritative state.
+	 */
+	if (!hostdead && clientdead) {
+		sysLogPrintf(
+			LOG_NOTE,
+			"NET: respawning client replica for bot %u",
+			botnum
+		);
+
+		botSpawn(chr, true);
+
+		if (!chr->prop || !chr->model) {
+			sysLogPrintf(
+				LOG_WARNING,
+				"NET: bot %u replica invalid after respawn",
+				botnum
+			);
+			return 0;
+		}
+
+		chr->prop->syncid = syncid;
+	}
+
+	/*
+	 * Do not force ordinary movement through the corpse/death action unions.
+	 * SVC_CHR_DAMAGE remains responsible for starting the local death state.
+	 */
+	if (hostdead) {
+		chr->damage = hostdamage;
+		return src->error;
+	}
+
+	/*
+	 * Keep all three facing layers aligned. The client still runs the outer
+	 * bot presentation tick, so updating only the model rotation allows stale
+	 * aibot facing values to overwrite it again.
+	 */
+	chrSetPos(chr, &pos, rooms, lookangle, false);
+	chrSetRotY(chr, bodyroty);
+	chrSetLookAngle(chr, lookangle);
+	modelSetChrRotY(chr->model, modelroty);
+	chr->damage = hostdamage;
+
+	if (chr->aibot) {
+		chr->aibot->roty = bodyroty;
+		chr->aibot->lookangle = lookangle;
+		chr->aibot->angleoffset = angleoffset;
+		chr->aibot->weaponnum = weaponnum;
+		chr->aibot->gunfunc = gunfunc;
+	}
+
+	/*
+	 * Weapon props and firing effects require their own replicated lifecycle.
+	 * Do not create client-only held weapon props here because bot respawning
+	 * also deletes child weapon props and can leave stale pointers.
+	 */
+	(void)weaponnum;
+	(void)gunfunc;
+	(void)firecount_right;
+	(void)firecount_left;
+	(void)fireslot_right;
+	(void)fireslot_left;
 
 	return src->error;
 }
