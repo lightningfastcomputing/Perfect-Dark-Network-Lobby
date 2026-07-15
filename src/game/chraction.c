@@ -4314,6 +4314,8 @@ void chrDamage(struct chrdata *chr, f32 damage, struct coord *vector, struct gse
 	s32 aplayernum = -1;
 	s32 choketype = CHOKETYPE_NONE;
 
+
+
 #ifndef PLATFORM_N64
 	if (g_NetMode == NETMODE_SERVER) {
 		netmsgSvcChrDamageWrite(&g_NetMsgRel, chr, damage, vector, gset, aprop, hitpart,
