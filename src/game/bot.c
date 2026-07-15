@@ -33,6 +33,7 @@
 #include "lib/anim.h"
 #include "data.h"
 #include "types.h"
+#include "net/net.h"
 
 #define PICKUPCRITERIA_DEFAULT  0
 #define PICKUPCRITERIA_CRITICAL 1
@@ -892,7 +893,13 @@ s32 botTick(struct prop *prop)
 
 	if (aibot) {
 		if (updateable && g_Vars.lvframe60 >= 145) {
-			botTickUnpaused(chr);
+			/*
+			 * Network clients keep a local replica of each simulant, but must
+			 * not independently run the authoritative AI decision loop.
+			 */
+			if (g_NetMode != NETMODE_CLIENT) {
+				botTickUnpaused(chr);
+			}
 
 			// Calculate cheap
 			aibot->cheap = true;
