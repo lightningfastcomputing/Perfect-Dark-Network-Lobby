@@ -21,6 +21,7 @@
 #define SVC_PROP_USE      0x34 // door/lift/etc was used
 #define SVC_PROP_DOOR     0x35 // door state changed
 #define SVC_PROP_LIFT     0x36 // lift state changed
+#define SVC_BOT_STATE     0x40 // authoritative simulant transform
 #define SVC_CHR_DAMAGE    0x42 // chr was damaged
 #define SVC_CHR_DISARM    0x43 // chr's weapons were dropped
 
@@ -66,6 +67,8 @@ u32 netmsgSvcPropDoorWrite(struct netbuf *dst, struct prop *prop, struct netclie
 u32 netmsgSvcPropDoorRead(struct netbuf *src, struct netclient *srccl);
 u32 netmsgSvcPropLiftWrite(struct netbuf *dst, struct prop *prop);
 u32 netmsgSvcPropLiftRead(struct netbuf *src, struct netclient *srccl);
+u32 netmsgSvcBotStateWrite(struct netbuf *dst, struct chrdata *chr, u8 botnum);
+u32 netmsgSvcBotStateRead(struct netbuf *src, struct netclient *srccl);
 u32 netmsgSvcChrDamageWrite(struct netbuf *dst, struct chrdata *chr, f32 damage, struct coord *vector, struct gset *gset, struct prop *aprop, s32 hitpart, bool damageshield, struct prop *prop2, s32 side, s16 *arg11, bool explosion, struct coord *explosionpos);
 u32 netmsgSvcChrDamageRead(struct netbuf *src, struct netclient *srccl);
 u32 netmsgSvcChrDisarmWrite(struct netbuf *dst, struct chrdata *chr, struct prop *attacker, u8 weaponnum, f32 wpndamage, struct coord *wpnpos);
