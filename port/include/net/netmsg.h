@@ -76,6 +76,7 @@ u32 netmsgSvcPropLiftWrite(struct netbuf *dst, struct prop *prop);
 u32 netmsgSvcPropLiftRead(struct netbuf *src, struct netclient *srccl);
 u32 netmsgSvcBotStateWrite(struct netbuf *dst, struct chrdata *chr, u8 botnum);
 u32 netmsgSvcBotStateRead(struct netbuf *src, struct netclient *srccl);
+bool netmsgGetBotVisualPosition(struct chrdata *chr, struct coord *out);
 u32 netmsgSvcChrDamageWrite(struct netbuf *dst, struct chrdata *chr, f32 damage, struct coord *vector, struct gset *gset, struct prop *aprop, s32 hitpart, bool damageshield, struct prop *prop2, s32 side, s16 *arg11, bool explosion, struct coord *explosionpos);
 u32 netmsgSvcChrDamageRead(struct netbuf *src, struct netclient *srccl);
 u32 netmsgSvcChrDisarmWrite(struct netbuf *dst, struct chrdata *chr, struct prop *attacker, u8 weaponnum, f32 wpndamage, struct coord *wpnpos);

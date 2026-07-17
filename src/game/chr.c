@@ -536,6 +536,25 @@ bool chr0f01f378(struct model *model, struct coord *arg1, struct coord *arg2, f3
 	f32 yincrement = 0.0f;
 	bool inlift;
 	u16 floorflags = 0;
+
+#ifndef PLATFORM_N64
+/*
+ * Network clients receive authoritative Sim transforms from the host.
+ * Do not run the normal character movement and collision callback again
+ * for those replicas, because their local fallspeed/ground state is not
+ * authoritative and can pull them back toward ledges or lower floors.
+ *
+ * model animation expects Y relative to manground, while prop->pos is
+ * absolute world position.
+ */
+if (g_NetMode == NETMODE_CLIENT && chr->aibot) {
+arg2->x = prop->pos.x;
+arg2->y = prop->pos.y - chr->manground;
+arg2->z = prop->pos.z;
+*mangroundptr = chr->manground;
+return true;
+}
+#endif
 #if VERSION >= VERSION_NTSC_1_0
 	s32 lvupdate240;
 	f32 lvupdate60f;
@@ -3361,7 +3380,11 @@ Gfx *chrRender(struct prop *prop, Gfx *gdl, bool xlupass)
 	f32 xrayalphafrac;
 	u8 spec[4];
 	u8 speb = 0;
-
+#ifndef PLATFORM_N64
+	struct coord netvisualpos;
+	struct coord netrootrestore;
+	bool hasnetvisualpos = false;
+#endif
 	// Don't render the eyespy if we're the one controlling it
 	if (CHRRACE(chr) == RACE_EYESPY) {
 		eyespy = chrToEyespy(chr);
@@ -3567,6 +3590,15 @@ Gfx *chrRender(struct prop *prop, Gfx *gdl, bool xlupass)
 		}
 
 		// Render the chr's model
+#ifndef PLATFORM_N64
+		hasnetvisualpos = netmsgGetBotVisualPosition(chr, &netvisualpos);
+
+		if (hasnetvisualpos) {
+		        modelGetRootPosition(model, &netrootrestore);
+		        modelSetRootPosition(model, &netvisualpos);
+		}
+#endif
+
 		modelRender(&renderdata, model);
 
 		// Render attached props (eg. held guns and attached mines/knives/bolts)
@@ -3576,6 +3608,12 @@ Gfx *chrRender(struct prop *prop, Gfx *gdl, bool xlupass)
 			chrRenderAttachedObject(child, &renderdata, xlupass, chr);
 			child = child->next;
 		}
+
+#ifndef PLATFORM_N64
+            if (hasnetvisualpos) {
+                    modelSetRootPosition(model, &netrootrestore);
+            }
+#endif
 
 		gdl = renderdata.gdl;
 

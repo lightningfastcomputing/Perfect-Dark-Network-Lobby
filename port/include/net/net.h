@@ -5,8 +5,7 @@
 #include "constants.h"
 #include "net/netbuf.h"
 
-#define NET_PROTOCOL_VER 16
-
+#define NET_PROTOCOL_VER 17
 #define NET_QUERY_MAGIC "PDQM\x01"
 
 #define NET_MAX_CLIENTS MAX_PLAYERS

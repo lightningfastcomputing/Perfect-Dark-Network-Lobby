@@ -122,6 +122,56 @@ static inline u32 netbufReadPlayerMove(struct netbuf *buf, struct netplayermove 
 	return buf->error;
 }
 
+struct netbotvisualstate {
+struct chrdata *chr;
+struct coord pos;
+bool valid;
+};
+
+static struct netbotvisualstate g_NetBotVisualStates[MAX_BOTS];
+
+static void netmsgSetBotVisualPosition(
+u8 botnum,
+struct chrdata *chr,
+const struct coord *visualpos)
+{
+if (botnum >= MAX_BOTS || !chr || !visualpos) {
+return;
+}
+
+g_NetBotVisualStates[botnum].chr = chr;
+g_NetBotVisualStates[botnum].pos = *visualpos;
+g_NetBotVisualStates[botnum].valid = true;
+}
+
+static void netmsgResetBotVisualState(u8 botnum)
+{
+if (botnum < MAX_BOTS) {
+g_NetBotVisualStates[botnum].chr = NULL;
+g_NetBotVisualStates[botnum].pos.x = 0.0f;
+g_NetBotVisualStates[botnum].pos.y = 0.0f;
+g_NetBotVisualStates[botnum].pos.z = 0.0f;
+g_NetBotVisualStates[botnum].valid = false;
+}
+}
+
+bool netmsgGetBotVisualPosition(struct chrdata *chr, struct coord *out)
+{
+if (g_NetMode != NETMODE_CLIENT || !chr || !out) {
+return false;
+}
+
+for (u8 i = 0; i < MAX_BOTS; i++) {
+struct netbotvisualstate *state = &g_NetBotVisualStates[i];
+
+if (state->valid && state->chr == chr) {
+*out = state->pos;
+return true;
+}
+}
+
+return false;
+}
 static inline u32 netbufWritePropPtr(struct netbuf *buf, const struct prop *prop)
 {
 	netbufWriteU32(buf, prop ? prop->syncid : 0);
@@ -1589,6 +1639,14 @@ u32 netmsgSvcBotStateWrite(struct netbuf *dst, struct chrdata *chr, u8 botnum)
 	netbufWriteU8(dst, botnum);
 	netbufWriteU32(dst, chr->prop->syncid);
 	netbufWriteCoord(dst, &chr->prop->pos);
+
+	/*
+	 * prop->pos is the authoritative gameplay position, but the model root
+	 * contains the host's actual rendered fall trajectory.
+	 */
+	struct coord visualpos;
+	modelGetRootPosition(chr->model, &visualpos);
+	netbufWriteCoord(dst, &visualpos);
 	netbufWriteRooms(dst, chr->prop->rooms, ARRAYCOUNT(chr->prop->rooms));
 
 	const f32 bodyroty = chrGetRotY(chr);
@@ -1663,6 +1721,9 @@ u32 netmsgSvcBotStateRead(struct netbuf *src, struct netclient *srccl)
 	struct coord pos;
 	RoomNum rooms[8] = { -1 };
 	netbufReadCoord(src, &pos);
+
+	struct coord visualpos;
+	netbufReadCoord(src, &visualpos);
 	netbufReadRooms(src, rooms, ARRAYCOUNT(rooms));
 
 	const f32 bodyroty = netbufReadF32(src);
@@ -1760,6 +1821,7 @@ botSpawn(chr, true);
 	                chrSetHandFiring(chr, hand, false);
 	                chrSetFiring(chr, hand, false);
 	        }
+		netmsgResetBotVisualState(botnum);
 
 	        chr->damage = hostdamage;
 	        return src->error;
@@ -1770,7 +1832,13 @@ botSpawn(chr, true);
 	 * bot presentation tick, so updating only the model rotation allows stale
 	 * aibot facing values to overwrite it again.
 	 */
-	chrSetPos(chr, &pos, rooms, lookangle, false);
+netmsgSetBotVisualPosition(botnum, chr, &visualpos);
+
+/*
+ * Gameplay authority still uses the host prop position. Rendering uses
+ * visualpos through the client-only chrRender override.
+ */
+chrSetPos(chr, &pos, rooms, lookangle, false);
 	chrSetRotY(chr, bodyroty);
 	chrSetLookAngle(chr, lookangle);
 	modelSetChrRotY(chr->model, modelroty);

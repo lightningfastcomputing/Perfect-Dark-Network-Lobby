@@ -868,11 +868,19 @@ void challengeConsiderMarkingComplete(void)
 
 bool challengeIsFeatureUnlocked(s32 featurenum)
 {
-	if (featurenum == 0) {
-		return true;
-	}
+/*
+ * A network host exposes the complete Combat Simulator configuration.
+ * This does not enable gameplay cheats or modify save progression.
+ */
+if (g_NetMode == NETMODE_SERVER) {
+return true;
+}
 
-	return (g_MpFeaturesUnlocked[featurenum] & 1) != 0;
+if (featurenum == 0) {
+return true;
+}
+
+return (g_MpFeaturesUnlocked[featurenum] & 1) != 0;
 }
 
 bool challengeIsFeatureUnlockedByPlayer(u32 numplayers, s32 featurenum)
