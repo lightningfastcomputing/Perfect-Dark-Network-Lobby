@@ -15,11 +15,14 @@
 #include "config.h"
 #include "mpsetups.h"
 #include "net/net.h"
+#include "net/netbuf.h"
+#include "net/netmsg.h"
 
 extern MenuItemHandlerResult menuhandlerMainMenuCombatSimulator(s32 operation, struct menuitem *item, union handlerdata *data);
 extern MenuItemHandlerResult menuhandlerMpAdvancedSetup(s32 operation, struct menuitem *item, union handlerdata *data);
 extern struct menuitem g_MpPlayerSetup234MenuItems[];
 extern struct menudialogdef g_NetJoinPlayerSetupMenuDialog;
+extern struct menudialogdef g_NetJoiningDialog;
 
 static s32 g_NetMenuMaxPlayers = NET_MAX_CLIENTS;
 static s32 g_NetMenuPort = NET_DEFAULT_PORT;
@@ -64,11 +67,7 @@ MenuItemHandlerResult menuhandlerHostStart(s32 operation, struct menuitem *item,
 {
 	if (operation == MENUOP_SET) {
 		if (netStartServer(g_NetMenuPort, g_NetMenuMaxPlayers) == 0) {
-			// load the setup file when entering the Combat Simulator
-			mpsetupCopyAllFromPak();
-			mpsetupLoadCurrentFile();
-			menuhandlerMainMenuCombatSimulator(MENUOP_SET, NULL, NULL);
-			menuhandlerMpAdvancedSetup(MENUOP_SET, NULL, NULL);
+			menuPushDialog(&g_NetJoiningDialog);
 		}
 	}
 
@@ -95,8 +94,8 @@ struct menuitem g_NetHostMenuItems[] = {
 	{
 		MENUITEMTYPE_SELECTABLE,
 		0,
-		0,
-		L_MPMENU_036, // "Start Game"
+		MENUITEMFLAG_LITERAL_TEXT,
+		(uintptr_t)"Open Lobby\n",
 		0,
 		menuhandlerHostStart,
 	},
@@ -142,7 +141,7 @@ static const char *menutextJoinAddress(struct menuitem *item)
 		} else if (g_NetLocalClient->state == CLSTATE_AUTH) {
 			snprintf(tmp, sizeof(tmp), "Authenticating with %s...\n", g_NetJoinAddr);
 		} else if (g_NetLocalClient->state == CLSTATE_LOBBY) {
-			snprintf(tmp, sizeof(tmp), "Waiting for host...\n");
+			snprintf(tmp, sizeof(tmp), "Waiting in lobby...\n");
 		}
 	} else {
 		// label
@@ -151,11 +150,102 @@ static const char *menutextJoinAddress(struct menuitem *item)
 	return tmp;
 }
 
-static MenuItemHandlerResult menuhandlerJoining(s32 operation, struct menuitem *item, union handlerdata *data)
+static const char *menutextLobbyState(struct menuitem *item)
 {
-	if (inputKeyPressed(VK_ESCAPE)) {
+	static char tmp[1024];
+	s32 len = 0;
+
+	if (!g_NetMode || !g_NetLocalClient) {
+		snprintf(tmp, sizeof(tmp), "Not connected\n");
+		return tmp;
+	}
+
+	if (g_NetLocalClient->state == CLSTATE_CONNECTING) {
+		snprintf(tmp, sizeof(tmp), "Connecting to %s...\n", g_NetJoinAddr);
+		return tmp;
+	}
+
+	if (g_NetLocalClient->state == CLSTATE_AUTH) {
+		snprintf(tmp, sizeof(tmp), "Authenticating with %s...\n", g_NetJoinAddr);
+		return tmp;
+	}
+
+	len += snprintf(tmp + len, sizeof(tmp) - len, "%s Network Lobby\n", g_NetMode == NETMODE_SERVER ? "Host" : "Client");
+	len += snprintf(tmp + len, sizeof(tmp) - len, "Players: %d / %d\n\n", g_NetNumClients, g_NetMaxClients);
+
+	for (s32 i = 0; i < g_NetMaxClients && len < (s32)sizeof(tmp) - 1; ++i) {
+		struct netclient *cl = &g_NetClients[i];
+		if (cl->state >= CLSTATE_LOBBY) {
+			const char *name = cl->settings.name[0] ? cl->settings.name : "Player";
+			const char *role = i == 0 ? "HOST" : "    ";
+			const char *state = cl->state >= CLSTATE_GAME ? "IN GAME" : ((cl->flags & CLFLAG_LOBBY_READY) ? "READY" : "NOT READY");
+			len += snprintf(tmp + len, sizeof(tmp) - len, "[%s] %s - %s\n", role, name, state);
+		}
+	}
+
+	if (g_NetMode == NETMODE_SERVER) {
+		len += snprintf(tmp + len, sizeof(tmp) - len, "\nHost controls match setup/start.\n");
+	} else {
+		len += snprintf(tmp + len, sizeof(tmp) - len, "\nWaiting for host to start.\n");
+	}
+
+	return tmp;
+}
+
+static MenuItemHandlerResult menuhandlerLobbyAbort(s32 operation, struct menuitem *item, union handlerdata *data)
+{
+	if (operation == MENUOP_SET || inputKeyPressed(VK_ESCAPE)) {
 		netDisconnect();
 		menuPopDialog();
+	}
+
+	return 0;
+}
+
+static MenuItemHandlerResult menuhandlerLobbyReady(s32 operation, struct menuitem *item, union handlerdata *data)
+{
+	if (!g_NetMode || !g_NetLocalClient) {
+		return 0;
+	}
+
+	if (operation == MENUOP_SET) {
+		const bool ready = !(g_NetLocalClient->flags & CLFLAG_LOBBY_READY);
+
+		if (ready) {
+			g_NetLocalClient->flags |= CLFLAG_LOBBY_READY;
+		} else {
+			g_NetLocalClient->flags &= ~CLFLAG_LOBBY_READY;
+		}
+
+		if (g_NetMode == NETMODE_CLIENT) {
+			netbufStartWrite(&g_NetMsgRel);
+			netmsgClcLobbyReadyWrite(&g_NetMsgRel, ready);
+			netSend(NULL, &g_NetMsgRel, true, NETCHAN_CONTROL);
+		} else {
+			netBroadcastLobbyState();
+		}
+	}
+
+	return 0;
+}
+
+static char *menuhandlerLobbyReadyValue(struct menuitem *item)
+{
+	return (g_NetLocalClient && (g_NetLocalClient->flags & CLFLAG_LOBBY_READY)) ? "READY\n" : "NOT READY\n";
+}
+
+static MenuItemHandlerResult menuhandlerLobbyStartMatch(s32 operation, struct menuitem *item, union handlerdata *data)
+{
+	if (operation == MENUOP_CHECKHIDDEN) {
+		return g_NetMode != NETMODE_SERVER;
+	}
+
+	if (operation == MENUOP_SET && g_NetMode == NETMODE_SERVER) {
+		netBroadcastLobbyState();
+		mpsetupCopyAllFromPak();
+		mpsetupLoadCurrentFile();
+		menuhandlerMainMenuCombatSimulator(MENUOP_SET, NULL, NULL);
+		menuhandlerMpAdvancedSetup(MENUOP_SET, NULL, NULL);
 	}
 
 	return 0;
@@ -166,9 +256,25 @@ struct menuitem g_NetJoiningMenuItems[] = {
 		MENUITEMTYPE_LABEL,
 		0,
 		MENUITEMFLAG_SELECTABLE_CENTRE,
-		(uintptr_t)&menutextJoinAddress,
+		(uintptr_t)&menutextLobbyState,
 		0,
 		NULL,
+	},
+	{
+		MENUITEMTYPE_SELECTABLE,
+		0,
+		MENUITEMFLAG_LITERAL_TEXT,
+		(uintptr_t)"Ready State:   \n",
+		(uintptr_t)&menuhandlerLobbyReadyValue,
+		menuhandlerLobbyReady,
+	},
+	{
+		MENUITEMTYPE_SELECTABLE,
+		0,
+		MENUITEMFLAG_LITERAL_TEXT,
+		(uintptr_t)"Configure / Start Match\n",
+		0,
+		menuhandlerLobbyStartMatch,
 	},
 	{
 		MENUITEMTYPE_SEPARATOR,
@@ -182,16 +288,16 @@ struct menuitem g_NetJoiningMenuItems[] = {
 		MENUITEMTYPE_SELECTABLE,
 		0,
 		MENUITEMFLAG_SELECTABLE_CENTRE | MENUITEMFLAG_LITERAL_TEXT,
-		(uintptr_t)"ESC to abort\n",
+		(uintptr_t)"Leave Lobby / ESC\n",
 		0,
-		menuhandlerJoining,
+		menuhandlerLobbyAbort,
 	},
 	{ MENUITEMTYPE_END },
 };
 
 struct menudialogdef g_NetJoiningDialog = {
 	MENUDIALOGTYPE_SUCCESS,
-	(uintptr_t)"Joining Game...",
+	(uintptr_t)"Network Lobby",
 	g_NetJoiningMenuItems,
 	NULL,
 	MENUDIALOGFLAG_LITERAL_TEXT | MENUDIALOGFLAG_IGNOREBACK | MENUDIALOGFLAG_STARTSELECTS,

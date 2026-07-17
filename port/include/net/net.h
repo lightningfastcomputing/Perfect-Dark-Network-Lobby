@@ -5,7 +5,7 @@
 #include "constants.h"
 #include "net/netbuf.h"
 
-#define NET_PROTOCOL_VER 12
+#define NET_PROTOCOL_VER 13
 
 #define NET_QUERY_MAGIC "PDQM\x01"
 
@@ -39,6 +39,8 @@
 #define CLSTATE_AUTH 2
 #define CLSTATE_LOBBY 3
 #define CLSTATE_GAME 4
+
+#define CLFLAG_LOBBY_READY (1 << 0)
 
 #define UCMD_FIRE (1 << 0)
 #define UCMD_ACTIVATE (1 << 1)

@@ -696,6 +696,7 @@ static void netServerEvDisconnect(struct netclient *cl)
 	netClientReset(cl);
 
 	--g_NetNumClients;
+	netBroadcastLobbyState();
 }
 
 static void netServerEvReceive(struct netclient *cl)
@@ -711,6 +712,7 @@ static void netServerEvReceive(struct netclient *cl)
 			case CLC_CHAT: rc = netmsgClcChatRead(&cl->in, cl); break;
 			case CLC_MOVE: rc = netmsgClcMoveRead(&cl->in, cl); break;
 			case CLC_SETTINGS: rc = netmsgClcSettingsRead(&cl->in, cl); break;
+			case CLC_LOBBY_READY: rc = netmsgClcLobbyReadyRead(&cl->in, cl); break;
 			default:
 				rc = 1;
 				break;
@@ -752,6 +754,7 @@ static void netClientEvReceive(struct netclient *cl)
 			case SVC_NOP: rc = 0; break;
 			case SVC_AUTH: rc = netmsgSvcAuthRead(&cl->in, cl); break;
 			case SVC_CHAT: rc = netmsgSvcChatRead(&cl->in, cl); break;
+			case SVC_LOBBY_STATE: rc = netmsgSvcLobbyStateRead(&cl->in, cl); break;
 			case SVC_STAGE_START: rc = netmsgSvcStageStartRead(&cl->in, cl); break;
 			case SVC_STAGE_END: rc = netmsgSvcStageEndRead(&cl->in, cl); break;
 			case SVC_PLAYER_MOVE: rc = netmsgSvcPlayerMoveRead(&cl->in, cl); break;

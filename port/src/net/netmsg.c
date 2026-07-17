@@ -225,6 +225,7 @@ u32 netmsgClcAuthRead(struct netbuf *src, struct netclient *srccl)
 	sysLogPrintf(LOG_NOTE, "NET: %s (%u) joined", srccl->settings.name, srccl->id);
 
 	netChatPrintf(NULL, "%s joined", name);
+	netBroadcastLobbyState();
 
 	return 0;
 }
@@ -335,6 +336,35 @@ u32 netmsgClcSettingsRead(struct netbuf *src, struct netclient *srccl)
 	srccl->settings.headnum = headnum;
 	srccl->settings.fovy = fovy;
 	srccl->settings.fovzoommult = fovzoommult;
+	netBroadcastLobbyState();
+
+	return src->error;
+}
+
+
+u32 netmsgClcLobbyReadyWrite(struct netbuf *dst, bool ready)
+{
+	netbufWriteU8(dst, CLC_LOBBY_READY);
+	netbufWriteU8(dst, ready ? 1 : 0);
+	return dst->error;
+}
+
+u32 netmsgClcLobbyReadyRead(struct netbuf *src, struct netclient *srccl)
+{
+	const u8 ready = netbufReadU8(src);
+
+	if (src->error || srccl->state < CLSTATE_LOBBY) {
+		return src->error ? 1 : 0;
+	}
+
+	if (ready) {
+		srccl->flags |= CLFLAG_LOBBY_READY;
+	} else {
+		srccl->flags &= ~CLFLAG_LOBBY_READY;
+	}
+
+	sysLogPrintf(LOG_NOTE, "NET: client %u lobby ready: %s", srccl->id, ready ? "yes" : "no");
+	netBroadcastLobbyState();
 
 	return src->error;
 }
@@ -405,6 +435,74 @@ u32 netmsgSvcChatRead(struct netbuf *src, struct netclient *srccl)
 		sysLogPrintf(LOG_CHAT, "%s", msg);
 	}
 	return src->error;
+}
+
+
+u32 netmsgSvcLobbyStateWrite(struct netbuf *dst)
+{
+	netbufWriteU8(dst, SVC_LOBBY_STATE);
+	netbufWriteU8(dst, g_NetMaxClients);
+	netbufWriteU8(dst, g_NetNumClients);
+
+	for (s32 i = 0; i < g_NetMaxClients; ++i) {
+		struct netclient *cl = &g_NetClients[i];
+		const u8 visible = cl->state >= CLSTATE_LOBBY;
+
+		netbufWriteU8(dst, visible ? cl->state : CLSTATE_DISCONNECTED);
+		netbufWriteU32(dst, visible ? cl->flags : 0);
+		netbufWriteStr(dst, visible ? cl->settings.name : "");
+	}
+
+	return dst->error;
+}
+
+u32 netmsgSvcLobbyStateRead(struct netbuf *src, struct netclient *srccl)
+{
+	const u8 maxclients = netbufReadU8(src);
+	const u8 numclients = netbufReadU8(src);
+
+	if (src->error || maxclients == 0 || maxclients > NET_MAX_CLIENTS) {
+		return 1;
+	}
+
+	g_NetMaxClients = maxclients;
+	g_NetNumClients = numclients;
+
+	for (s32 i = 0; i < maxclients; ++i) {
+		const u8 state = netbufReadU8(src);
+		const u32 flags = netbufReadU32(src);
+		const char *name = netbufReadStr(src);
+
+		if (src->error) {
+			return 1;
+		}
+
+		if (i == g_NetLocalClient->id) {
+			g_NetLocalClient->flags = flags;
+			if (state >= CLSTATE_LOBBY) {
+				g_NetLocalClient->state = state;
+			}
+		} else {
+			g_NetClients[i].id = i;
+			g_NetClients[i].state = state;
+			g_NetClients[i].flags = flags;
+			strncpy(g_NetClients[i].settings.name, name, sizeof(g_NetClients[i].settings.name) - 1);
+			g_NetClients[i].settings.name[sizeof(g_NetClients[i].settings.name) - 1] = '\0';
+		}
+	}
+
+	return src->error;
+}
+
+void netBroadcastLobbyState(void)
+{
+	if (g_NetMode != NETMODE_SERVER || !g_NetLocalClient || g_NetLocalClient->state > CLSTATE_LOBBY) {
+		return;
+	}
+
+	netbufStartWrite(&g_NetMsgRel);
+	netmsgSvcLobbyStateWrite(&g_NetMsgRel);
+	netSend(NULL, &g_NetMsgRel, true, NETCHAN_CONTROL);
 }
 
 u32 netmsgSvcStageStartWrite(struct netbuf *dst)

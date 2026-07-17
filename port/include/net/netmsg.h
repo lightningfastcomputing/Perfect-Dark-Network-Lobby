@@ -9,6 +9,7 @@
 #define SVC_NOP           0x01 // does nothing
 #define SVC_AUTH          0x02 // auth response, sent in response to CLC_AUTH
 #define SVC_CHAT          0x03 // chat message
+#define SVC_LOBBY_STATE   0x04 // lobby player list/ready state snapshot
 #define SVC_STAGE_START   0x10 // start level
 #define SVC_STAGE_END     0x11 // end level
 #define SVC_PLAYER_MOVE   0x20 // player movement and inputs
@@ -30,6 +31,7 @@
 #define CLC_CHAT     0x03 // chat message
 #define CLC_MOVE     0x04 // player input
 #define CLC_SETTINGS 0x05 // player settings changed
+#define CLC_LOBBY_READY 0x06 // player toggled lobby ready state
 
 u32 netmsgClcAuthWrite(struct netbuf *dst);
 u32 netmsgClcAuthRead(struct netbuf *src, struct netclient *srccl);
@@ -39,11 +41,16 @@ u32 netmsgClcMoveWrite(struct netbuf *dst);
 u32 netmsgClcMoveRead(struct netbuf *src, struct netclient *srccl);
 u32 netmsgClcSettingsWrite(struct netbuf *dst);
 u32 netmsgClcSettingsRead(struct netbuf *src, struct netclient *srccl);
+u32 netmsgClcLobbyReadyWrite(struct netbuf *dst, bool ready);
+u32 netmsgClcLobbyReadyRead(struct netbuf *src, struct netclient *srccl);
 
 u32 netmsgSvcAuthWrite(struct netbuf *dst, struct netclient *authcl);
 u32 netmsgSvcAuthRead(struct netbuf *src, struct netclient *srccl);
 u32 netmsgSvcChatWrite(struct netbuf *dst, const char *str);
 u32 netmsgSvcChatRead(struct netbuf *src, struct netclient *srccl);
+u32 netmsgSvcLobbyStateWrite(struct netbuf *dst);
+u32 netmsgSvcLobbyStateRead(struct netbuf *src, struct netclient *srccl);
+void netBroadcastLobbyState(void);
 u32 netmsgSvcStageStartWrite(struct netbuf *dst);
 u32 netmsgSvcStageStartRead(struct netbuf *src, struct netclient *srccl);
 u32 netmsgSvcStageEndWrite(struct netbuf *dst);
