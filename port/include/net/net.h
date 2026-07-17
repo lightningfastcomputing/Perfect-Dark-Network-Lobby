@@ -5,7 +5,7 @@
 #include "constants.h"
 #include "net/netbuf.h"
 
-#define NET_PROTOCOL_VER 13
+#define NET_PROTOCOL_VER 14
 
 #define NET_QUERY_MAGIC "PDQM\x01"
 

@@ -1612,6 +1612,15 @@ u32 netmsgSvcBotStateWrite(struct netbuf *dst, struct chrdata *chr, u8 botnum)
 	const f32 lookangle = chrGetInverseTheta(chr);
 	const f32 modelroty = modelGetChrRotY(chr->model);
 	const f32 angleoffset = chr->aibot ? chr->aibot->angleoffset : 0.0f;
+	const s16 animnum = chr->model->anim
+	                ? chr->model->anim->animnum
+	                : 0;
+	const f32 animframe = chr->model->anim
+	                ? chr->model->anim->framea
+	                : 0.0f;
+	const f32 animspeed = chr->model->anim
+	                ? chr->model->anim->playspeed
+	                : 0.0f;
 	const s8 weaponnum = chr->aibot
 			? chr->aibot->weaponnum
 			: WEAPON_UNARMED;
@@ -1623,6 +1632,9 @@ u32 netmsgSvcBotStateWrite(struct netbuf *dst, struct chrdata *chr, u8 botnum)
 	netbufWriteF32(dst, lookangle);
 	netbufWriteF32(dst, modelroty);
 	netbufWriteF32(dst, angleoffset);
+	netbufWriteS16(dst, animnum);
+	netbufWriteF32(dst, animframe);
+	netbufWriteF32(dst, animspeed);
 	netbufWriteS8(dst, weaponnum);
 	netbufWriteU8(dst, gunfunc);
 
@@ -1658,6 +1670,9 @@ u32 netmsgSvcBotStateRead(struct netbuf *src, struct netclient *srccl)
 	const f32 lookangle = netbufReadF32(src);
 	const f32 modelroty = netbufReadF32(src);
 	const f32 angleoffset = netbufReadF32(src);
+	const s16 animnum = netbufReadS16(src);
+	const f32 animframe = netbufReadF32(src);
+	const f32 animspeed = netbufReadF32(src);
 	const s8 weaponnum = netbufReadS8(src);
 	const u8 gunfunc = netbufReadU8(src);
 	const u8 firecount_right = netbufReadU8(src);
@@ -1753,6 +1768,25 @@ u32 netmsgSvcBotStateRead(struct netbuf *src, struct netclient *srccl)
 	chrSetLookAngle(chr, lookangle);
 	modelSetChrRotY(chr->model, modelroty);
 	chr->damage = hostdamage;
+
+	/*
+	 * Client replicas do not run bot AI, so copy the host's selected
+	 * animation and playback speed.
+	 */
+	if (chr->model->anim && animnum > 0) {
+	        if (chr->model->anim->animnum != animnum) {
+	                modelSetAnimation(
+	                        chr->model,
+	                        animnum,
+	                        0,
+	                        animframe,
+	                        animspeed,
+	                        0.0f
+	                );
+	        } else {
+	                chr->model->anim->playspeed = animspeed;
+	        }
+	}
 
 	if (chr->aibot) {
 		chr->aibot->roty = bodyroty;
