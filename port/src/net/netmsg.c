@@ -1625,8 +1625,20 @@ u32 netmsgSvcBotStateWrite(struct netbuf *dst, struct chrdata *chr, u8 botnum)
 			? chr->aibot->weaponnum
 			: WEAPON_UNARMED;
 	const u8 gunfunc = chr->aibot
-			? chr->aibot->gunfunc
-			: FUNC_PRIMARY;
+	                ? chr->aibot->gunfunc
+	                : FUNC_PRIMARY;
+	const u8 heldmask =
+	                (chrGetHeldProp(chr, HAND_RIGHT) ? (1 << HAND_RIGHT) : 0)
+	                | (chrGetHeldProp(chr, HAND_LEFT) ? (1 << HAND_LEFT) : 0);
+const struct prop *rightweapon = chrGetHeldProp(chr, HAND_RIGHT);
+const struct prop *leftweapon = chrGetHeldProp(chr, HAND_LEFT);
+const u8 firingmask =
+(rightweapon && weaponIsGunfireVisible((struct prop *)rightweapon)
+? (1 << HAND_RIGHT)
+: 0)
+| (leftweapon && weaponIsGunfireVisible((struct prop *)leftweapon)
+? (1 << HAND_LEFT)
+: 0);
 
 	netbufWriteF32(dst, bodyroty);
 	netbufWriteF32(dst, lookangle);
@@ -1637,6 +1649,8 @@ u32 netmsgSvcBotStateWrite(struct netbuf *dst, struct chrdata *chr, u8 botnum)
 	netbufWriteF32(dst, animspeed);
 	netbufWriteS8(dst, weaponnum);
 	netbufWriteU8(dst, gunfunc);
+	netbufWriteU8(dst, heldmask);
+	netbufWriteU8(dst, firingmask);
 
 	/*
 	 * These are presentation counters only on the client. The server still
@@ -1675,6 +1689,8 @@ u32 netmsgSvcBotStateRead(struct netbuf *src, struct netclient *srccl)
 	const f32 animspeed = netbufReadF32(src);
 	const s8 weaponnum = netbufReadS8(src);
 	const u8 gunfunc = netbufReadU8(src);
+	const u8 heldmask = netbufReadU8(src);
+	const u8 firingmask = netbufReadU8(src);
 	const u8 firecount_right = netbufReadU8(src);
 	const u8 firecount_left = netbufReadU8(src);
 	const s8 fireslot_right = netbufReadS8(src);
@@ -1754,8 +1770,18 @@ u32 netmsgSvcBotStateRead(struct netbuf *src, struct netclient *srccl)
 	 * SVC_CHR_DAMAGE remains responsible for starting the local death state.
 	 */
 	if (hostdead) {
-		chr->damage = hostdamage;
-		return src->error;
+	        for (s32 hand = 0; hand < 2; hand++) {
+	                if (chr->weapons_held[hand]) {
+	                        weaponDeleteFromChr(chr, hand);
+	                        chr->weapons_held[hand] = NULL;
+	                }
+
+	                chrSetHandFiring(chr, hand, false);
+	                chrSetFiring(chr, hand, false);
+	        }
+
+	        chr->damage = hostdamage;
+	        return src->error;
 	}
 
 	/*
@@ -1795,14 +1821,61 @@ u32 netmsgSvcBotStateRead(struct netbuf *src, struct netclient *srccl)
 		chr->aibot->weaponnum = weaponnum;
 		chr->aibot->gunfunc = gunfunc;
 	}
+	/*
+	 * Reconstruct held weapons locally for presentation only. These child props
+	 * are never authoritative and never perform client-side hit detection.
+	 */
+	for (s32 hand = 0; hand < 2; hand++) {
+		const bool hostholds = (heldmask & (1 << hand)) != 0;
+		const bool hostfires = (firingmask & (1 << hand)) != 0;
+		struct prop *heldprop = chrGetHeldProp(chr, hand);
+		struct weaponobj *heldweapon = heldprop ? heldprop->weapon : NULL;
+
+		if (!hostholds || weaponnum == WEAPON_UNARMED) {
+			if (heldprop) {
+				weaponDeleteFromChr(chr, hand);
+				chr->weapons_held[hand] = NULL;
+			}
+
+			chrSetHandFiring(chr, hand, false);
+			chrSetFiring(chr, hand, false);
+			continue;
+		}
+
+		if (!heldweapon || heldweapon->weaponnum != weaponnum) {
+			const s32 modelnum = playermgrGetModelOfWeapon(weaponnum);
+
+			if (heldprop) {
+				weaponDeleteFromChr(chr, hand);
+				chr->weapons_held[hand] = NULL;
+			}
+
+			if (modelnum >= 0) {
+				const u32 flags = hand == HAND_LEFT
+						? OBJFLAG_WEAPON_LEFTHANDED
+						: 0;
+
+				heldprop = chrGiveWeapon(
+						chr,
+						modelnum,
+						weaponnum,
+						flags
+				);
+				heldweapon = heldprop ? heldprop->weapon : NULL;
+			}
+		}
+
+		if (heldweapon) {
+			heldweapon->gunfunc = gunfunc;
+		}
+
+		chrSetHandFiring(chr, hand, hostfires);
+		chrSetFiring(chr, hand, hostfires);
+	}
 
 	/*
-	 * Weapon props and firing effects require their own replicated lifecycle.
-	 * Do not create client-only held weapon props here because bot respawning
-	 * also deletes child weapon props and can leave stale pointers.
+	 * Retained for packet compatibility and later cosmetic shot-event work.
 	 */
-	(void)weaponnum;
-	(void)gunfunc;
 	(void)firecount_right;
 	(void)firecount_left;
 	(void)fireslot_right;
