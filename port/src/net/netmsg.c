@@ -1651,6 +1651,8 @@ const u8 firingmask =
 	netbufWriteU8(dst, gunfunc);
 	netbufWriteU8(dst, heldmask);
 	netbufWriteU8(dst, firingmask);
+	netbufWriteU32(dst, rightweapon ? rightweapon->syncid : 0);
+	netbufWriteU32(dst, leftweapon ? leftweapon->syncid : 0);
 
 	/*
 	 * These are presentation counters only on the client. The server still
@@ -1691,6 +1693,8 @@ u32 netmsgSvcBotStateRead(struct netbuf *src, struct netclient *srccl)
 	const u8 gunfunc = netbufReadU8(src);
 	const u8 heldmask = netbufReadU8(src);
 	const u8 firingmask = netbufReadU8(src);
+	const u32 heldsyncid_right = netbufReadU32(src);
+	const u32 heldsyncid_left = netbufReadU32(src);
 	const u8 firecount_right = netbufReadU8(src);
 	const u8 firecount_left = netbufReadU8(src);
 	const s8 fireslot_right = netbufReadS8(src);
@@ -1828,6 +1832,9 @@ u32 netmsgSvcBotStateRead(struct netbuf *src, struct netclient *srccl)
 	for (s32 hand = 0; hand < 2; hand++) {
 		const bool hostholds = (heldmask & (1 << hand)) != 0;
 		const bool hostfires = (firingmask & (1 << hand)) != 0;
+		const u32 hostheldsyncid = hand == HAND_LEFT
+		                ? heldsyncid_left
+		                : heldsyncid_right;
 		struct prop *heldprop = chrGetHeldProp(chr, hand);
 		struct weaponobj *heldweapon = heldprop ? heldprop->weapon : NULL;
 
@@ -1866,7 +1873,11 @@ u32 netmsgSvcBotStateRead(struct netbuf *src, struct netclient *srccl)
 		}
 
 		if (heldweapon) {
-			heldweapon->gunfunc = gunfunc;
+		        heldweapon->gunfunc = gunfunc;
+
+		        if (heldprop && hostheldsyncid != 0) {
+		                heldprop->syncid = hostheldsyncid;
+		        }
 		}
 
 		chrSetHandFiring(chr, hand, hostfires);
