@@ -141,30 +141,13 @@ static inline struct prop *netbufReadPropPtr(struct netbuf *buf)
 			return &g_Vars.props[i];
 		}
 	}
-
-	if (syncid > 0 && syncid <= (u32)g_Vars.maxprops) {
-		struct prop *expected = &g_Vars.props[syncid - 1];
-
-		sysLogPrintf(
-			LOG_WARNING,
-			"NET: prop with syncid %u does not exist; "
-			"expected slot=%u has syncid=%u type=%u active=%u",
-			syncid,
-			syncid - 1,
-			expected->syncid,
-			expected->type,
-			expected->active
-		);
-	} else {
-		sysLogPrintf(
-			LOG_WARNING,
-			"NET: prop with syncid %u does not exist; maxprops=%d",
-			syncid,
-			g_Vars.maxprops
-		);
-	}
-
-	return NULL;
+/*
+ * A prop can disappear before a queued move, damage or ownership packet
+ * reaches the client. This commonly happens when a Sim dies and its held
+ * weapon child props are deleted. Callers already treat NULL as a stale
+ * reference, so do not display a warning for this recoverable condition.
+ */
+return NULL;
 }
 
 static inline s32 propRoomsEqual(const RoomNum *ra, const RoomNum *rb)
@@ -1749,13 +1732,7 @@ u32 netmsgSvcBotStateRead(struct netbuf *src, struct netclient *srccl)
 	 * the same local reset once before applying the new authoritative state.
 	 */
 	if (!hostdead && clientdead) {
-		sysLogPrintf(
-			LOG_NOTE,
-			"NET: respawning client replica for bot %u",
-			botnum
-		);
-
-		botSpawn(chr, true);
+botSpawn(chr, true);
 
 		if (!chr->prop || !chr->model) {
 			sysLogPrintf(
