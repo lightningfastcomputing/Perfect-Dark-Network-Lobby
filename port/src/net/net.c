@@ -769,6 +769,8 @@ static void netClientEvReceive(struct netclient *cl)
 			case SVC_BOT_STATE: rc = netmsgSvcBotStateRead(&cl->in, cl); break;
 			case SVC_CHR_DAMAGE: rc = netmsgSvcChrDamageRead(&cl->in, cl); break;
 			case SVC_CHR_DISARM: rc = netmsgSvcChrDisarmRead(&cl->in, cl); break;
+			case SVC_EFFECT_BEAM: rc = netmsgSvcEffectBeamRead(&cl->in, cl); break;
+			case SVC_EFFECT_EXPLOSION: rc = netmsgSvcEffectExplosionRead(&cl->in, cl); break;
 			default:
 				rc = 1;
 				break;

@@ -10,6 +10,7 @@
 #include "game/chr.h"
 #include "game/bot.h"
 #include "game/chraction.h"
+#include "game/explosions.h"
 #include "game/prop.h"
 #include "game/propobj.h"
 #include "game/player.h"
@@ -1351,6 +1352,19 @@ u32 netmsgSvcPropSpawnRead(struct netbuf *src, struct netclient *srccl)
 		}
 		if (prop->obj) {
 			if (hidden & OBJHFLAG_PROJECTILE) {
+				sysLogPrintf(
+				LOG_NOTE,
+				"NETDBG: client projectile receive syncid=%u type=%u objtype=%u weapon=%d hidden=%08x pos=(%.2f %.2f %.2f)",
+				syncid,
+				type,
+				objtype,
+				type == PROPTYPE_WEAPON && prop->weapon ? prop->weapon->weaponnum : -1,
+				hidden,
+				pos.x,
+				pos.y,
+				pos.z
+				);
+
 				func0f0685e4(prop);
 				netbufReadCoord(src, &prop->obj->projectile->nextsteppos);
 				prop->obj->projectile->ownerprop = netbufReadPropPtr(src);
@@ -2130,4 +2144,122 @@ u32 netmsgSvcChrDisarmRead(struct netbuf *src, struct netclient *srccl)
 	setCurrentPlayerNum(prevplayernum);
 
 	return src->error;
+}
+
+/*
+ * Cosmetic beam replication.
+ *
+ * Damage and hit detection remain server authoritative. The client only
+ * reconstructs the firing character's visible beam and firing sound.
+ */
+u32 netmsgSvcEffectBeamWrite(
+        struct netbuf *dst,
+        struct chrdata *chr,
+        s32 handnum,
+        s32 weaponnum,
+        const struct coord *from,
+        const struct coord *to)
+{
+        netbufWriteU8(dst, SVC_EFFECT_BEAM);
+        netbufWritePropPtr(dst, chr ? chr->prop : NULL);
+        netbufWriteS8(dst, handnum);
+        netbufWriteS16(dst, weaponnum);
+        netbufWriteCoord(dst, from);
+        netbufWriteCoord(dst, to);
+
+        return dst->error;
+}
+
+u32 netmsgSvcEffectBeamRead(struct netbuf *src, struct netclient *srccl)
+{
+        struct prop *chrprop = netbufReadPropPtr(src);
+        const s8 handnum = netbufReadS8(src);
+        const s16 weaponnum = netbufReadS16(src);
+        struct coord from;
+        struct coord to;
+
+        netbufReadCoord(src, &from);
+        netbufReadCoord(src, &to);
+
+        if (src->error || srccl->state < CLSTATE_GAME) {
+                return src->error;
+        }
+
+        if (!chrprop || !chrprop->chr || handnum < 0 || handnum > 1) {
+                sysLogPrintf(LOG_WARNING, "NET: invalid SVC_EFFECT_BEAM");
+                return 0;
+        }
+
+        /*
+         * chrUpdateFireslot obtains the replicated held weapon and installs
+         * the beam in the character's normal render fire slot.
+         */
+        chrUpdateFireslot(chrprop->chr, handnum, true, true, &from, &to);
+
+        sysLogPrintf(
+                LOG_NOTE,
+                "NETDBG: client beam receive chr=%p hand=%d weapon=%d",
+                (void *)chrprop,
+                handnum,
+                weaponnum
+        );
+
+        return src->error;
+}
+
+/*
+ * Cosmetic explosion replication.
+ *
+ * explosionCreateSimple creates the complete visual/audio effect. Client
+ * damage is suppressed in explosionInflictDamage, leaving the server as
+ * the sole authority for character, prop and environmental damage.
+ */
+u32 netmsgSvcEffectExplosionWrite(
+        struct netbuf *dst,
+        const struct coord *pos,
+        const RoomNum *rooms,
+        s16 type,
+        s32 playernum)
+{
+        netbufWriteU8(dst, SVC_EFFECT_EXPLOSION);
+        netbufWriteS16(dst, type);
+        netbufWriteS8(dst, playernum);
+        netbufWriteCoord(dst, pos);
+        netbufWriteRooms(dst, rooms, 8);
+
+        return dst->error;
+}
+
+u32 netmsgSvcEffectExplosionRead(struct netbuf *src, struct netclient *srccl)
+{
+        const s16 type = netbufReadS16(src);
+        const s8 playernum = netbufReadS8(src);
+        struct coord pos;
+        RoomNum rooms[8] = { -1, -1, -1, -1, -1, -1, -1, -1 };
+
+        netbufReadCoord(src, &pos);
+        netbufReadRooms(src, rooms, ARRAYCOUNT(rooms));
+
+        if (src->error || srccl->state < CLSTATE_GAME) {
+                return src->error;
+        }
+
+        if (rooms[0] < 0) {
+                sysLogPrintf(LOG_WARNING, "NET: invalid SVC_EFFECT_EXPLOSION room");
+                return 0;
+        }
+
+        explosionCreateSimple(NULL, &pos, rooms, type, playernum);
+
+        sysLogPrintf(
+                LOG_NOTE,
+                "NETDBG: client explosion receive type=%d room=%d pos=(%.2f %.2f %.2f)",
+                type,
+                rooms[0],
+                pos.x,
+                pos.y,
+                pos.z
+        );
+
+        return src->error;
 }

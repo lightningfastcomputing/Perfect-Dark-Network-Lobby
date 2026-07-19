@@ -25,6 +25,8 @@
 #define SVC_BOT_STATE     0x40 // authoritative simulant transform
 #define SVC_CHR_DAMAGE    0x42 // chr was damaged
 #define SVC_CHR_DISARM    0x43 // chr's weapons were dropped
+#define SVC_EFFECT_BEAM   0x44 // cosmetic weapon beam
+#define SVC_EFFECT_EXPLOSION 0x45 // cosmetic explosion
 
 #define CLC_BAD      0x00 // trash
 #define CLC_NOP      0x01 // does nothing
@@ -81,5 +83,9 @@ u32 netmsgSvcChrDamageWrite(struct netbuf *dst, struct chrdata *chr, f32 damage,
 u32 netmsgSvcChrDamageRead(struct netbuf *src, struct netclient *srccl);
 u32 netmsgSvcChrDisarmWrite(struct netbuf *dst, struct chrdata *chr, struct prop *attacker, u8 weaponnum, f32 wpndamage, struct coord *wpnpos);
 u32 netmsgSvcChrDisarmRead(struct netbuf *src, struct netclient *srccl);
+u32 netmsgSvcEffectBeamWrite(struct netbuf *dst, struct chrdata *chr, s32 handnum, s32 weaponnum, const struct coord *from, const struct coord *to);
+u32 netmsgSvcEffectBeamRead(struct netbuf *src, struct netclient *srccl);
+u32 netmsgSvcEffectExplosionWrite(struct netbuf *dst, const struct coord *pos, const RoomNum *rooms, s16 type, s32 playernum);
+u32 netmsgSvcEffectExplosionRead(struct netbuf *src, struct netclient *srccl);
 
 #endif

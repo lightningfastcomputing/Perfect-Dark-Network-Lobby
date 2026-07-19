@@ -27,6 +27,10 @@
 #include "lib/anim.h"
 #include "data.h"
 #include "types.h"
+#ifndef PLATFORM_N64
+#include "net/net.h"
+#include "net/netmsg.h"
+#endif
 
 #ifdef PLATFORM_N64
 #define SHAKE_TIME 6
@@ -550,6 +554,18 @@ bool explosionCreate(struct prop *sourceprop, struct coord *exppos, RoomNum *exp
 		}
 	}
 
+#ifndef PLATFORM_N64
+	if (exp != NULL && g_NetMode == NETMODE_SERVER) {
+		netmsgSvcEffectExplosionWrite(
+				&g_NetMsgRel,
+				exppos,
+				exprooms,
+				type,
+				playernum
+		);
+	}
+#endif
+
 	return exp != NULL;
 }
 
@@ -666,6 +682,17 @@ bool explosionOverlapsProp(struct explosion *exp, struct prop *prop, struct coor
 
 void explosionInflictDamage(struct prop *expprop)
 {
+#ifndef PLATFORM_N64
+	/*
+	 * Network clients create replicated explosions for presentation only.
+	 * All explosion damage, prop destruction and light destruction are
+	 * decided by the authoritative server.
+	 */
+	if (g_NetMode == NETMODE_CLIENT) {
+		return;
+	}
+#endif
+
 	s32 stack;
 	struct explosion *exp = expprop->explosion;
 	struct explosiontype *type = &g_ExplosionTypes[exp->type];

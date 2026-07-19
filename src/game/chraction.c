@@ -59,6 +59,7 @@
 #ifndef PLATFORM_N64
 #include "net/net.h"
 #include "net/netmsg.h"
+#include "system.h"
 #endif
 
 s32 g_RecentQuipsPlayed[5];
@@ -8911,6 +8912,19 @@ void chrUpdateFireslot(struct chrdata *chr, s32 handnum, bool withsound, bool wi
 
 			if (withbeam) {
 				beamCreate(&fireslot->beam, weaponnum, from, to);
+
+#ifndef PLATFORM_N64
+				if (g_NetMode == NETMODE_SERVER) {
+					netmsgSvcEffectBeamWrite(
+							&g_NetMsgRel,
+							chr,
+							handnum,
+							weaponnum,
+							from,
+							to
+					);
+				}
+#endif
 			}
 		}
 	}
@@ -10328,6 +10342,36 @@ void chrTickShoot(struct chrdata *chr, s32 handnum)
 									psCreate(NULL, projectileobj->base.prop, func->soundnum, -1,
 											-1, 0, 0, PSTYPE_NONE, NULL, -1, NULL, -1, -1, -1, -1);
 								}
+
+#ifndef PLATFORM_N64
+/*
+ * Player-fired projectiles enter the normal network prop
+ * replication path in bgunCreateFiredProjectile. Bot-fired
+ * projectiles must do the same so clients create and render
+ * the authoritative rocket, bolt or grenade-round prop.
+ *
+ * The client remains presentation-only. Projectile movement,
+ * collisions, explosions and damage continue to be decided
+ * by the server.
+ */
+if (g_NetMode == NETMODE_SERVER && projectileobj->base.prop) {
+sysLogPrintf(
+LOG_NOTE,
+"NETDBG: bot projectile spawn prop=%p syncid=%u type=%u weapon=%d hidden=%08x pos=(%.2f %.2f %.2f)",
+(void *)projectileobj->base.prop,
+projectileobj->base.prop->syncid,
+projectileobj->base.prop->type,
+projectileobj->weaponnum,
+projectileobj->base.hidden,
+projectileobj->base.prop->pos.x,
+projectileobj->base.prop->pos.y,
+projectileobj->base.prop->pos.z
+);
+
+netmsgSvcPropSpawnWrite(&g_NetMsgRel, projectileobj->base.prop);
+netmsgSvcPropMoveWrite(&g_NetMsgRel, projectileobj->base.prop, NULL);
+}
+#endif
 							}
 						}
 					} else {
