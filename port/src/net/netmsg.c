@@ -1387,6 +1387,20 @@ u32 netmsgSvcPropSpawnRead(struct netbuf *src, struct netclient *srccl)
 					// this is a thrown projectile, play throw sound
 					psCreate(NULL, prop, SFX_THROW, -1, -1, 0, 0, PSTYPE_NONE, NULL, -1, NULL, -1, -1, -1, -1);
 				}
+				else if (type == PROPTYPE_WEAPON
+						&& prop->weapon
+						&& (prop->weapon->weaponnum == WEAPON_ROCKET
+							|| prop->weapon->weaponnum == WEAPON_HOMINGROCKET)) {
+					sysLogPrintf(
+							LOG_NOTE,
+							"NETDBG: playing replicated rocket launch sound syncid=%u weapon=%d",
+							syncid,
+							prop->weapon->weaponnum);
+
+					psCreate(NULL, prop, SFX_LAUNCH_ROCKET_8053, -1,
+							-1, 0, 0, PSTYPE_NONE, NULL, -1, NULL,
+							-1, -1, -1, -1);
+				}
 			}
 			prop->obj->flags = flags;
 			prop->obj->flags2 = flags2;
