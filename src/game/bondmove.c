@@ -200,6 +200,10 @@ static inline void bmoveProcessRemoteInput(const bool allowc1buttons)
 		}
 	}
 
+	if (pl->waitforzrelease && !(inmove->ucmd & UCMD_FIRE)) {
+		pl->waitforzrelease = false;
+	}
+
 	const bool fireguns = (inmove->ucmd & UCMD_FIRE) && !pl->waitforzrelease && allowc1buttons;
 
 	bgunTickGameplay(fireguns);

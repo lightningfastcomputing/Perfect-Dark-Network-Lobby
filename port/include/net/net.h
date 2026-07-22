@@ -5,7 +5,7 @@
 #include "constants.h"
 #include "net/netbuf.h"
 
-#define NET_PROTOCOL_VER 17
+#define NET_PROTOCOL_VER 20
 #define NET_QUERY_MAGIC "PDQM\x01"
 
 #define NET_MAX_CLIENTS MAX_PLAYERS
@@ -52,9 +52,13 @@
 #define UCMD_SELECT_DUAL (1 << 8)
 #define UCMD_EYESSHUT (1 << 9)
 #define UCMD_SECONDARY (1 << 10)
+#define UCMD_SLAYER_ACTIVE (1 << 11)
+#define UCMD_SLAYER_SLOW (1 << 12)
+#define UCMD_SLAYER_DETONATE (1 << 13)
+#define UCMD_SLAYER_MASK (UCMD_SLAYER_ACTIVE | UCMD_SLAYER_SLOW | UCMD_SLAYER_DETONATE)
 #define UCMD_RESPAWN (1 << 27)
 #define UCMD_CHAT (1 << 28)
-#define UCMD_IMPORTANT_MASK (UCMD_FIRE | UCMD_ACTIVATE | UCMD_RELOAD | UCMD_AIMMODE | UCMD_SELECT | UCMD_SELECT_DUAL)
+#define UCMD_IMPORTANT_MASK (UCMD_FIRE | UCMD_ACTIVATE | UCMD_RELOAD | UCMD_AIMMODE | UCMD_SELECT | UCMD_SELECT_DUAL | UCMD_SLAYER_MASK)
 #define UCMD_FL_FORCEPOS (1 << 29)
 #define UCMD_FL_FORCEANGLE (1 << 30)
 #define UCMD_FL_FORCEGROUND (1 << 31)
@@ -68,6 +72,8 @@ struct netplayermove {
 	f32 zoomfov; // manual zoom fov for the current gun; synced only if UCMD_AIMING is set
 	f32 movespeed[2]; // move inputs, [0] is forward, [1] is sideways; used mostly for animation
 	f32 angles[2]; // view angles, [0] is theta, [1] is verta
+	f32 slayerturn[2]; // per-frame guided-rocket pitch and yaw deltas
+	s8 slayerthrottle; // guided-rocket right-stick throttle input
 	f32 crosspos[2]; // crosshair position in aiming mode; normalized to default aspect ratio
 	s8 weaponnum; // switch to this weapon if UCMD_SELECT is set
 	struct coord pos; // player position at g_NetTick == tick
@@ -99,6 +105,10 @@ struct netclient {
 	u32 outmoveack; // last acked outmove tick
 	u32 forcetick; // tick on which the client's position was forced, or 0 if not forcing
 	u32 lerpticks; // how many ticks we've been lerping the position
+
+	f32 slayerturn[2]; // latest local guided-rocket turn input
+	s8 slayerthrottle; // latest local guided-rocket throttle input
+	u32 slayerappliedtick; // newest Slayer input tick applied by the server
 
 	struct netbuf out; // outbound messages are written here, except broadcasts
 	struct netbuf in; // incoming packets are fed here

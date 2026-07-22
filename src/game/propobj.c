@@ -80,6 +80,8 @@
 #ifndef PLATFORM_N64
 #include "net/net.h"
 #include "net/netmsg.h"
+
+#include "system.h"
 #endif
 
 void rng2SetSeed(u32 seed);
@@ -4192,6 +4194,21 @@ bool propExplode(struct prop *prop, s32 exptype)
 	s32 playernum = (obj->hidden & 0xf0000000) >> 28;
 	bool result;
 
+#ifndef PLATFORM_N64
+	if (g_NetMode == NETMODE_CLIENT
+			&& prop->syncid
+			&& prop->type == PROPTYPE_WEAPON
+			&& prop->weapon
+			&& (prop->weapon->weaponnum == WEAPON_ROCKET
+				|| prop->weapon->weaponnum == WEAPON_HOMINGROCKET)) {
+		sysLogPrintf(
+				LOG_NOTE,
+				"NETDBG: suppressing local synced rocket explosion syncid=%u",
+				prop->syncid);
+		return false;
+	}
+#endif
+
 	if (prop->parent) {
 		struct prop *parent = prop->parent;
 		struct coord pos;
@@ -4280,6 +4297,18 @@ void weaponTick(struct prop *prop)
 	struct defaultobj *obj = prop->obj;
 	struct weaponobj *weapon = prop->weapon;
 
+#ifndef PLATFORM_N64
+	/*
+	 * The host owns synced rocket timers, explosions and deletion. The client
+	 * waits for SVC_EFFECT_EXPLOSION followed by SVC_PROJECTILE_DESTROY.
+	 */
+	if (g_NetMode == NETMODE_CLIENT
+			&& prop->syncid
+			&& (weapon->weaponnum == WEAPON_ROCKET
+				|| weapon->weaponnum == WEAPON_HOMINGROCKET)) {
+		return;
+	}
+#endif
 	// Handle grenade timers
 	if (((weapon->weaponnum == WEAPON_GRENADE && weapon->gunfunc == FUNC_PRIMARY)
 				|| weapon->weaponnum == WEAPON_GRENADEROUND)
@@ -4421,6 +4450,12 @@ void weaponTick(struct prop *prop)
 		// Handle rockets
 		if (weapon->timer240 == 0) {
 			propExplode(prop, (obj->flags2 & OBJFLAG2_WEAPON_HUGEEXP) ? EXPLOSIONTYPE_HUGE17 : EXPLOSIONTYPE_ROCKET);
+
+#ifndef PLATFORM_N64
+			if (g_NetMode == NETMODE_SERVER && prop->syncid) {
+				netmsgSvcProjectileDestroyWrite(&g_NetMsgRel, prop);
+			}
+#endif
 
 			obj->hidden |= OBJHFLAG_DELETING;
 
@@ -6273,6 +6308,22 @@ s32 projectileTick(struct defaultobj *obj, bool *embedded)
 	struct coord sp5dc;
 	bool result = false;
 	struct prop *prop = obj->prop;
+
+#ifndef PLATFORM_N64
+	/*
+	 * Synced rockets are presentation objects on clients. Their position,
+	 * velocity and lifetime come from the host; running collision locally made
+	 * different machines hit walls and explode at different times.
+	 */
+	if (g_NetMode == NETMODE_CLIENT
+			&& prop->syncid
+			&& obj->type == OBJTYPE_WEAPON
+			&& (((struct weaponobj *)obj)->weaponnum == WEAPON_ROCKET
+				|| ((struct weaponobj *)obj)->weaponnum == WEAPON_HOMINGROCKET)) {
+		func0f069c70(obj, true, true);
+		return true;
+	}
+#endif
 	struct coord sp5c8;
 	RoomNum sp5b8[8];
 	struct coord sp5ac;
@@ -7613,6 +7664,21 @@ s32 projectileTick(struct defaultobj *obj, bool *embedded)
 		}
 	}
 
+#ifndef PLATFORM_N64
+	/*
+	 * Stream the authoritative rocket transform every server tick. Clients no
+	 * longer integrate these synced rockets independently.
+	 */
+	if (g_NetMode == NETMODE_SERVER
+			&& prop->syncid
+			&& obj->type == OBJTYPE_WEAPON
+			&& (((struct weaponobj *)obj)->weaponnum == WEAPON_ROCKET
+				|| ((struct weaponobj *)obj)->weaponnum == WEAPON_HOMINGROCKET)
+			&& (obj->hidden & OBJHFLAG_PROJECTILE)
+			&& obj->projectile) {
+		netmsgSvcPropMoveWrite(&g_NetMsg, prop, NULL);
+	}
+#endif
 	return result;
 }
 

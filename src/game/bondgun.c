@@ -4800,6 +4800,26 @@ void bgunCreateFiredProjectile(s32 handnum)
 
 #ifndef PLATFORM_N64
 	if (g_NetMode == NETMODE_CLIENT) {
+		/*
+		 * The host owns the projectile, but only this local gun state machine
+		 * knows with certainty that the shot was FUNCFLAG_FLYBYWIRE.
+		 */
+		struct hand *fbwhand = g_Vars.currentplayer->hands + handnum;
+		struct weapon *fbwweapon = weaponFindById(fbwhand->gset.weaponnum);
+
+		if (fbwweapon) {
+			struct weaponfunc *fbwfunc =
+					fbwweapon->functions[fbwhand->gset.weaponfunc];
+
+			if (fbwfunc
+					&& (fbwfunc->type & 0xff)
+						== INVENTORYFUNCTYPE_SHOOT_PROJECTILE
+					&& (((struct weaponfunc_shootprojectile *)fbwfunc)
+						->base.base.flags & FUNCFLAG_FLYBYWIRE)) {
+				netSlayerFbwLatchFired();
+			}
+		}
+
 		return;
 	}
 #endif
@@ -5020,6 +5040,14 @@ void bgunCreateFiredProjectile(s32 handnum)
 				else if (g_NetMode == NETMODE_SERVER) {
 					netmsgSvcPropSpawnWrite(&g_NetMsgRel, weapon->base.prop);
 					netmsgSvcPropMoveWrite(&g_NetMsgRel, weapon->base.prop, NULL);
+
+					if (funcdef->base.base.flags & FUNCFLAG_FLYBYWIRE) {
+						struct netclient *ownercl = netClientForPlayerNum(g_Vars.currentplayernum);
+
+						if (ownercl) {
+							netmsgSvcSlayerRocketWrite(&g_NetMsgRel, weapon->base.prop, ownercl);
+						}
+					}
 				}
 #endif
 #else

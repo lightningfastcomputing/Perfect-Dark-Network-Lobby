@@ -3572,7 +3572,7 @@ void playerTick(bool arg0)
 				s8 stickx = 0;
 				s8 sticky = 0;
 #ifndef PLATFORM_N64
-				s8 rsticky = joyGetRStickY(contpad1);
+				s8 rsticky = mode == CONTROLMODE_NA ? 0 : joyGetRStickY(contpad1);
 #endif
 				Mtxf sp1fc;
 				Mtxf sp1bc;
@@ -3593,11 +3593,39 @@ void playerTick(bool arg0)
 				// NOTE: slayer handling
 				bool slow = false;
 				bool pause = false;
+				bool networkinput = false;
 				f32 newspeed;
 
 #ifndef PLATFORM_N64
 				if (mode == CONTROLMODE_NA) {
-					// TODO
+					networkinput = true;
+					sp178 = 0.0f;
+					sp174 = 0.0f;
+					/*
+					 * Keep the authoritative rocket at normal speed until the
+					 * owning client's first guidance packet arrives. The old
+					 * fallback forced target speed 1 and made remote Slayer
+					 * rockets crawl whenever camera attachment failed or a
+					 * packet was delayed.
+					 */
+					slow = false;
+
+					if (g_NetMode == NETMODE_SERVER && g_Vars.currentplayer->client) {
+						struct netclient *rocketcl = g_Vars.currentplayer->client;
+						const struct netplayermove *inmove = &rocketcl->inmove[0];
+
+						if (inmove->tick && (inmove->ucmd & UCMD_SLAYER_ACTIVE)) {
+							slow = (inmove->ucmd & UCMD_SLAYER_SLOW) != 0;
+							rsticky = inmove->slayerthrottle;
+
+							if (rocketcl->slayerappliedtick != inmove->tick) {
+								rocketcl->slayerappliedtick = inmove->tick;
+								sp178 = inmove->slayerturn[0];
+								sp174 = inmove->slayerturn[1];
+								explode = (inmove->ucmd & UCMD_SLAYER_DETONATE) != 0;
+							}
+						}
+					}
 				} else
 #endif
 				if (mode == CONTROLMODE_23
@@ -3685,31 +3713,48 @@ void playerTick(bool arg0)
 				sp2ac.x = sp2b8[0][0];
 				sp2ac.z = sp2b8[0][2];
 
-				sp178 = sticky * LVUPDATE60FREAL() * 0.00025f;
-				sp174 = -stickx * LVUPDATE60FREAL() * 0.00025f;
+				if (!networkinput) {
+					sp178 = sticky * LVUPDATE60FREAL() * 0.00025f;
+					sp174 = -stickx * LVUPDATE60FREAL() * 0.00025f;
 
 #ifndef PLATFORM_N64
-				// respect the invert pitch setting
-				if (optionsGetForwardPitch(g_Vars.currentplayerstats->mpindex)) {
-					sp178 = -sp178;
-				}
-				// mouse control
-				if (g_Vars.currentplayernum == 0) {
-					f32 mdx, mdy;
-					inputMouseGetScaledDelta(&mdx, &mdy);
-					if (mdx || mdy) {
-						mdx *= 0.022f;
-						mdy *= 0.022f;
-						mdx = (mdx < -128.f) ? -128.f : (mdx > 127.f) ? 127.f : mdx;
-						mdy = (mdy < -128.f) ? -128.f : (mdy > 127.f) ? 127.f : mdy;
-						if (g_Vars.currentplayerstats && !optionsGetForwardPitch(g_Vars.currentplayerstats->mpindex)) {
-							mdy = -mdy;
-						}
-						sp178 += mdy;
-						sp174 -= mdx;
+					// respect the invert pitch setting
+					if (optionsGetForwardPitch(g_Vars.currentplayerstats->mpindex)) {
+						sp178 = -sp178;
 					}
-				}
+					// mouse control
+					if (g_Vars.currentplayernum == 0) {
+						f32 mdx, mdy;
+						inputMouseGetScaledDelta(&mdx, &mdy);
+						if (mdx || mdy) {
+							mdx *= 0.022f;
+							mdy *= 0.022f;
+							mdx = (mdx < -128.f) ? -128.f : (mdx > 127.f) ? 127.f : mdx;
+							mdy = (mdy < -128.f) ? -128.f : (mdy > 127.f) ? 127.f : mdy;
+							if (g_Vars.currentplayerstats && !optionsGetForwardPitch(g_Vars.currentplayerstats->mpindex)) {
+								mdy = -mdy;
+							}
+							sp178 += mdy;
+							sp174 -= mdx;
+						}
+					}
+
+					if (g_NetMode == NETMODE_CLIENT && !g_Vars.currentplayer->isremote) {
+						g_NetLocalClient->slayerturn[0] = sp178;
+						g_NetLocalClient->slayerturn[1] = sp174;
+						g_NetLocalClient->slayerthrottle = rsticky;
+						g_Vars.currentplayer->ucmd |= UCMD_SLAYER_ACTIVE;
+
+						if (slow) {
+							g_Vars.currentplayer->ucmd |= UCMD_SLAYER_SLOW;
+						}
+
+						if (explode) {
+							g_Vars.currentplayer->ucmd |= UCMD_SLAYER_DETONATE;
+						}
+					}
 #endif
+				}
 
 				f20 = sqrtf(sp2ac.f[0] * sp2ac.f[0] + sp2ac.f[2] * sp2ac.f[2]);
 

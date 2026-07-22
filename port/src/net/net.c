@@ -207,6 +207,17 @@ static inline void netClientRecordMove(struct netclient *cl, const struct player
 	}
 
 	move->ucmd = pl->ucmd;
+	move->slayerturn[0] = 0.0f;
+	move->slayerturn[1] = 0.0f;
+	move->slayerthrottle = 0;
+
+	if (g_NetMode == NETMODE_CLIENT
+			&& cl == g_NetLocalClient
+			&& (move->ucmd & UCMD_SLAYER_ACTIVE)) {
+		move->slayerturn[0] = cl->slayerturn[0];
+		move->slayerturn[1] = cl->slayerturn[1];
+		move->slayerthrottle = cl->slayerthrottle;
+	}
 
 	if (g_NetMode == NETMODE_SERVER && pl->isremote && cl->inmove[0].tick) {
 		// carry some of the client inputs over to the outmove
@@ -240,6 +251,26 @@ static inline void netClientRecordMove(struct netclient *cl, const struct player
 
 	if (bgunIsUsingSecondaryFunction()) {
 		move->ucmd |= UCMD_SECONDARY;
+	}
+
+	/*
+	 * This is the authoritative local intent point for a network client.
+	 * The server already receives this UCMD_FIRE edge, even on builds where
+	 * the client never reaches bgunCreateFiredProjectile.
+	 */
+	if (g_NetMode == NETMODE_CLIENT
+			&& cl == g_NetLocalClient
+			&& (move->ucmd & UCMD_FIRE)
+			&& !(cl->outmove[1].ucmd & UCMD_FIRE)
+			&& (move->ucmd & UCMD_SECONDARY)
+			&& pl->visionmode != VISIONMODE_SLAYERROCKET
+			&& pl->slayerrocket == NULL
+			&& bgunGetWeaponNum(HAND_RIGHT) == WEAPON_SLAYER) {
+		sysLogPrintf(
+				LOG_NOTE,
+				"NETDBG: FBW outgoing fire edge tick=%u",
+				move->tick);
+		netSlayerFbwLatchFired();
 	}
 
 	if (pl->insightaimmode) {
@@ -761,6 +792,8 @@ static void netClientEvReceive(struct netclient *cl)
 			case SVC_PLAYER_STATS: rc = netmsgSvcPlayerStatsRead(&cl->in, cl); break;
 			case SVC_PROP_MOVE: rc = netmsgSvcPropMoveRead(&cl->in, cl); break;
 			case SVC_PROP_SPAWN: rc = netmsgSvcPropSpawnRead(&cl->in, cl); break;
+			case SVC_SLAYER_ROCKET: rc = netmsgSvcSlayerRocketRead(&cl->in, cl); break;
+			case SVC_PROJECTILE_DESTROY: rc = netmsgSvcProjectileDestroyRead(&cl->in, cl); break;
 			case SVC_PROP_DAMAGE: rc = netmsgSvcPropDamageRead(&cl->in, cl); break;
 			case SVC_PROP_PICKUP: rc = netmsgSvcPropPickupRead(&cl->in, cl); break;
 			case SVC_PROP_USE: rc = netmsgSvcPropUseRead(&cl->in, cl); break;

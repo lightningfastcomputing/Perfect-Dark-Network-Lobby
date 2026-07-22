@@ -33,6 +33,8 @@
 
 /* utils */
 
+static void netSlayerFbwOnSpawn(struct prop *prop);
+
 static inline u32 netbufReadHidden(struct netbuf *buf)
 {
 	u32 hidden = netbufReadU32(buf);
@@ -91,6 +93,9 @@ static inline u32 netbufWritePlayerMove(struct netbuf *buf, const struct netplay
 	netbufWriteF32(buf, in->movespeed[1]);
 	netbufWriteF32(buf, in->angles[0]);
 	netbufWriteF32(buf, in->angles[1]);
+	netbufWriteF32(buf, in->slayerturn[0]);
+	netbufWriteF32(buf, in->slayerturn[1]);
+	netbufWriteS8(buf, in->slayerthrottle);
 	netbufWriteF32(buf, in->crosspos[0]);
 	netbufWriteF32(buf, in->crosspos[1]);
 	netbufWriteS8(buf, in->weaponnum);
@@ -111,6 +116,9 @@ static inline u32 netbufReadPlayerMove(struct netbuf *buf, struct netplayermove 
 	in->movespeed[1] = netbufReadF32(buf);
 	in->angles[0] = netbufReadF32(buf);
 	in->angles[1] = netbufReadF32(buf);
+	in->slayerturn[0] = netbufReadF32(buf);
+	in->slayerturn[1] = netbufReadF32(buf);
+	in->slayerthrottle = netbufReadS8(buf);
 	in->crosspos[0] = netbufReadF32(buf);
 	in->crosspos[1] = netbufReadF32(buf);
 	in->weaponnum = netbufReadS8(buf);
@@ -1375,6 +1383,7 @@ u32 netmsgSvcPropSpawnRead(struct netbuf *src, struct netclient *srccl)
 				prop->obj->projectile->droptype = netbufReadS16(src);
 				prop->obj->projectile->flighttime240 = 0;
 				netbufReadMtxf(src, &prop->obj->projectile->mtx);
+
 				if (prop->obj->projectile->flags & PROJECTILEFLAG_POWERED) {
 					// rocket; get acceleration and realrot
 					prop->obj->projectile->unk010 = netbufReadF32(src);
@@ -1409,6 +1418,8 @@ u32 netmsgSvcPropSpawnRead(struct netbuf *src, struct netclient *srccl)
 			prop->obj->hidden2 = hidden2;
 			prop->obj->extrascale = extrascale;
 			prop->obj->pad = pad;
+
+			netSlayerFbwOnSpawn(prop);
 			if (prop->obj->model) {
 				modelSetScale(prop->obj->model, prop->obj->model->scale * ((f32)extrascale / 256.f));
 			}
@@ -1421,6 +1432,261 @@ u32 netmsgSvcPropSpawnRead(struct netbuf *src, struct netclient *srccl)
 	return src->error;
 }
 
+#define NET_SLAYER_FBW_LATCH_TICKS 120u
+
+/*
+ * Client Slayer engagement uses a two-sided latch:
+ * - the local gun state machine records an exact fly-by-wire firing event;
+ * - the client separately records its authoritative powered rocket.
+ * Either can happen first. Camera mode starts when both are present.
+ */
+static u32 g_NetSlayerFbwPendingFrame;
+static u32 g_NetSlayerFbwSpawnFrame;
+static u32 g_NetSlayerFbwSpawnSyncId;
+static struct prop *g_NetSlayerFbwSpawnProp;
+
+static u32 netSlayerFbwNow(void)
+{
+	return g_Vars.lvframe60 ? (u32)g_Vars.lvframe60 : 1u;
+}
+
+static bool netSlayerFbwFresh(u32 frame)
+{
+	return frame != 0
+			&& (u32)(netSlayerFbwNow() - frame) < NET_SLAYER_FBW_LATCH_TICKS;
+}
+
+static bool netSlayerFbwRocketValid(struct prop *prop, u32 expectedsyncid)
+{
+	if (!prop
+			|| !g_Vars.props
+			|| prop < g_Vars.props
+			|| prop >= g_Vars.props + g_Vars.maxprops
+			|| prop->type != PROPTYPE_WEAPON
+			|| !prop->weapon
+			|| !(prop->weapon->base.hidden & OBJHFLAG_PROJECTILE)
+			|| !prop->weapon->base.projectile
+			|| (prop->weapon->weaponnum != WEAPON_ROCKET
+				&& prop->weapon->weaponnum != WEAPON_HOMINGROCKET)) {
+		return false;
+	}
+
+	return expectedsyncid == 0 || prop->syncid == expectedsyncid;
+}
+
+static void netSlayerFbwClear(void)
+{
+	g_NetSlayerFbwPendingFrame = 0;
+	g_NetSlayerFbwSpawnFrame = 0;
+	g_NetSlayerFbwSpawnSyncId = 0;
+	g_NetSlayerFbwSpawnProp = NULL;
+}
+
+static void netSlayerFbwEngage(struct prop *rocketprop, const char *source)
+{
+	if (g_NetMode != NETMODE_CLIENT
+			|| !g_NetLocalClient
+			|| !g_NetLocalClient->player
+			|| !g_NetLocalClient->player->prop
+			|| !netSlayerFbwRocketValid(
+				rocketprop,
+				rocketprop ? rocketprop->syncid : 0)) {
+		return;
+	}
+
+	struct player *player = g_NetLocalClient->player;
+	const s32 playernum = playermgrGetPlayerNumByProp(player->prop);
+
+	if (playernum < 0) {
+		sysLogPrintf(LOG_WARNING, "NET: FBW could not resolve local player slot");
+		return;
+	}
+
+	const s32 prevplayernum = g_Vars.currentplayernum;
+	setCurrentPlayerNum(playernum);
+	playerLaunchSlayerRocket(rocketprop->weapon);
+	setCurrentPlayerNum(prevplayernum);
+
+	sysLogPrintf(
+			LOG_NOTE,
+			"NETDBG: FBW camera engaged source=%s player=%d syncid=%u",
+			source,
+			playernum,
+			rocketprop->syncid);
+
+	netSlayerFbwClear();
+}
+
+static void netSlayerFbwRecordRocket(struct prop *prop, const char *source)
+{
+	if (!netSlayerFbwRocketValid(prop, prop ? prop->syncid : 0)) {
+		return;
+	}
+
+	g_NetSlayerFbwSpawnProp = prop;
+	g_NetSlayerFbwSpawnSyncId = prop->syncid;
+	g_NetSlayerFbwSpawnFrame = netSlayerFbwNow();
+
+	sysLogPrintf(
+			LOG_NOTE,
+			"NETDBG: FBW rocket recorded source=%s syncid=%u pending=%u",
+			source,
+			prop->syncid,
+			g_NetSlayerFbwPendingFrame);
+
+	if (netSlayerFbwFresh(g_NetSlayerFbwPendingFrame)) {
+		netSlayerFbwEngage(prop, source);
+	}
+}
+
+static void netSlayerFbwOnSpawn(struct prop *prop)
+{
+	if (g_NetMode != NETMODE_CLIENT
+			|| !g_NetLocalClient
+			|| !g_NetLocalClient->player
+			|| !g_NetLocalClient->player->prop
+			|| !netSlayerFbwRocketValid(prop, prop ? prop->syncid : 0)) {
+		return;
+	}
+
+	struct player *player = g_NetLocalClient->player;
+	const s32 localplayernum = playermgrGetPlayerNumByProp(player->prop);
+	const s32 hiddenowner = (prop->obj->hidden & 0xf0000000) >> 28;
+	struct projectile *projectile = prop->obj->projectile;
+
+	if (localplayernum < 0
+			|| !(projectile->flags & PROJECTILEFLAG_POWERED)
+			|| (projectile->ownerprop != player->prop
+				&& hiddenowner != localplayernum)) {
+		return;
+	}
+
+	netSlayerFbwRecordRocket(prop, "spawn");
+}
+
+void netSlayerFbwLatchFired(void)
+{
+	if (g_NetMode != NETMODE_CLIENT
+			|| !g_NetLocalClient
+			|| !g_NetLocalClient->player
+			|| !g_NetLocalClient->player->prop) {
+		return;
+	}
+
+	g_NetSlayerFbwPendingFrame = netSlayerFbwNow();
+
+	sysLogPrintf(
+			LOG_NOTE,
+			"NETDBG: FBW fire latched frame=%u spawnframe=%u syncid=%u",
+			g_NetSlayerFbwPendingFrame,
+			g_NetSlayerFbwSpawnFrame,
+			g_NetSlayerFbwSpawnSyncId);
+
+	if (netSlayerFbwFresh(g_NetSlayerFbwSpawnFrame)
+			&& netSlayerFbwRocketValid(
+				g_NetSlayerFbwSpawnProp,
+				g_NetSlayerFbwSpawnSyncId)) {
+		netSlayerFbwEngage(g_NetSlayerFbwSpawnProp, "fire");
+	}
+	else if (g_NetSlayerFbwSpawnFrame
+			&& !netSlayerFbwFresh(g_NetSlayerFbwSpawnFrame)) {
+		g_NetSlayerFbwSpawnFrame = 0;
+		g_NetSlayerFbwSpawnSyncId = 0;
+		g_NetSlayerFbwSpawnProp = NULL;
+	}
+}
+u32 netmsgSvcSlayerRocketWrite(struct netbuf *dst, struct prop *prop, struct netclient *ownercl)
+{
+	if (!prop || !ownercl) {
+		return dst->error;
+	}
+
+	netbufWriteU8(dst, SVC_SLAYER_ROCKET);
+	netbufWriteU8(dst, ownercl->id);
+	netbufWritePropPtr(dst, prop);
+
+	return dst->error;
+}
+
+u32 netmsgSvcSlayerRocketRead(struct netbuf *src, struct netclient *srccl)
+{
+	const u8 ownerclid = netbufReadU8(src);
+	struct prop *prop = netbufReadPropPtr(src);
+
+	if (src->error || srccl->state < CLSTATE_GAME) {
+		return src->error;
+	}
+
+	if (!g_NetLocalClient || ownerclid != g_NetLocalClient->id) {
+		return src->error;
+	}
+
+	if (!netSlayerFbwRocketValid(prop, prop ? prop->syncid : 0)) {
+		sysLogPrintf(
+				LOG_WARNING,
+				"NET: invalid SVC_SLAYER_ROCKET for local client %u",
+				ownerclid);
+		return src->error;
+	}
+
+	/*
+	 * Owner-confirmed rocket hint. Camera engagement still waits for the
+	 * local FUNCFLAG_FLYBYWIRE firing latch, covering either event order.
+	 */
+	netSlayerFbwRecordRocket(prop, "event");
+
+	return src->error;
+}
+
+u32 netmsgSvcProjectileDestroyWrite(struct netbuf *dst, struct prop *prop)
+{
+	if (!prop || !prop->syncid) {
+		return dst->error;
+	}
+
+	netbufWriteU8(dst, SVC_PROJECTILE_DESTROY);
+	netbufWritePropPtr(dst, prop);
+
+	return dst->error;
+}
+
+u32 netmsgSvcProjectileDestroyRead(struct netbuf *src, struct netclient *srccl)
+{
+	struct prop *prop = netbufReadPropPtr(src);
+
+	if (src->error || srccl->state < CLSTATE_GAME) {
+		return src->error;
+	}
+
+	if (!prop || !prop->obj || prop->type != PROPTYPE_WEAPON) {
+		sysLogPrintf(LOG_WARNING, "NET: invalid SVC_PROJECTILE_DESTROY");
+		return 0;
+	}
+
+	for (s32 i = 0; i < PLAYERCOUNT(); ++i) {
+		struct player *player = g_Vars.players[i];
+
+		if (player && player->slayerrocket == prop->weapon) {
+			player->slayerrocket = NULL;
+			player->visionmode = VISIONMODE_SLAYERROCKETSTATIC;
+		}
+	}
+
+	if (g_NetSlayerFbwSpawnProp == prop) {
+		netSlayerFbwClear();
+	}
+
+	prop->weapon->timer240 = -1;
+	prop->obj->hidden |= OBJHFLAG_DELETING;
+
+	sysLogPrintf(
+			LOG_NOTE,
+			"NETDBG: authoritative projectile destroy syncid=%u weapon=%d",
+			prop->syncid,
+			prop->weapon->weaponnum);
+
+	return src->error;
+}
 u32 netmsgSvcPropDamageWrite(struct netbuf *dst, struct prop *prop, f32 damage, struct coord *pos, s32 weaponnum, s32 playernum)
 {
 	if (!prop || !prop->obj) {

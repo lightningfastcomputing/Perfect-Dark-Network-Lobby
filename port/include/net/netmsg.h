@@ -27,6 +27,8 @@
 #define SVC_CHR_DISARM    0x43 // chr's weapons were dropped
 #define SVC_EFFECT_BEAM   0x44 // cosmetic weapon beam
 #define SVC_EFFECT_EXPLOSION 0x45 // cosmetic explosion
+#define SVC_SLAYER_ROCKET 0x46 // attach owning client's camera to replicated Slayer rocket
+#define SVC_PROJECTILE_DESTROY 0x47 // authoritative removal of a synced projectile
 
 #define CLC_BAD      0x00 // trash
 #define CLC_NOP      0x01 // does nothing
@@ -64,6 +66,11 @@ u32 netmsgSvcPlayerStatsWrite(struct netbuf *dst, struct netclient *actcl);
 u32 netmsgSvcPlayerStatsRead(struct netbuf *src, struct netclient *srccl);
 u32 netmsgSvcPropSpawnWrite(struct netbuf *dst, struct prop *prop);
 u32 netmsgSvcPropSpawnRead(struct netbuf *src, struct netclient *srccl);
+u32 netmsgSvcSlayerRocketWrite(struct netbuf *dst, struct prop *prop, struct netclient *ownercl);
+u32 netmsgSvcSlayerRocketRead(struct netbuf *src, struct netclient *srccl);
+u32 netmsgSvcProjectileDestroyWrite(struct netbuf *dst, struct prop *prop);
+u32 netmsgSvcProjectileDestroyRead(struct netbuf *src, struct netclient *srccl);
+void netSlayerFbwLatchFired(void);
 u32 netmsgSvcPropMoveWrite(struct netbuf *dst, struct prop *prop, struct coord *initrot);
 u32 netmsgSvcPropMoveRead(struct netbuf *src, struct netclient *srccl);
 u32 netmsgSvcPropDamageWrite(struct netbuf *dst, struct prop *prop, f32 damage, struct coord *pos, s32 weaponnum, s32 playernum);
