@@ -3618,10 +3618,18 @@ void playerTick(bool arg0)
 							slow = (inmove->ucmd & UCMD_SLAYER_SLOW) != 0;
 							rsticky = inmove->slayerthrottle;
 
-							if (rocketcl->slayerappliedtick != inmove->tick) {
+							/*
+							 * Client steering is transmitted as cumulative totals.
+							 * Subtract the last totals applied by the server so a
+							 * dropped move packet cannot permanently discard turns.
+							 */
+							if (inmove->tick > rocketcl->slayerappliedtick) {
+								sp178 = inmove->slayerturn[0] - rocketcl->slayerappliedturn[0];
+								sp174 = inmove->slayerturn[1] - rocketcl->slayerappliedturn[1];
+
+								rocketcl->slayerappliedturn[0] = inmove->slayerturn[0];
+								rocketcl->slayerappliedturn[1] = inmove->slayerturn[1];
 								rocketcl->slayerappliedtick = inmove->tick;
-								sp178 = inmove->slayerturn[0];
-								sp174 = inmove->slayerturn[1];
 								explode = (inmove->ucmd & UCMD_SLAYER_DETONATE) != 0;
 							}
 						}
@@ -3740,8 +3748,8 @@ void playerTick(bool arg0)
 					}
 
 					if (g_NetMode == NETMODE_CLIENT && !g_Vars.currentplayer->isremote) {
-						g_NetLocalClient->slayerturn[0] = sp178;
-						g_NetLocalClient->slayerturn[1] = sp174;
+						g_NetLocalClient->slayerturn[0] += sp178;
+						g_NetLocalClient->slayerturn[1] += sp174;
 						g_NetLocalClient->slayerthrottle = rsticky;
 						g_Vars.currentplayer->ucmd |= UCMD_SLAYER_ACTIVE;
 

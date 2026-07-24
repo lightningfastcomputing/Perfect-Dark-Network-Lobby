@@ -16,6 +16,7 @@ project(pd C CXX)
 include(TargetArch)
 include(FindPkgConfig)
 include(AssetUtils)
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_EXTENSIONS OFF)

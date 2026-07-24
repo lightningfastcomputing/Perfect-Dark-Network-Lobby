@@ -5,9 +5,9 @@ This branch contains the current Thorfect Dark network-lobby build with:
 - public master-server registry and lobby chat;
 - public server browser;
 - native green in-game Network Lobby;
-- Protocol 20 networking;
+- Protocol 21 networking;
 - host-authoritative Sim movement, combat, death, respawn, weapons, firing, and corrected client-side falling;
-- host-authoritative Slayer rockets with working remote-client fly-by-wire camera and repeat firing; remote steering remains less responsive than host steering;
+- host-authoritative Slayer rockets with working remote-client fly-by-wire camera, repeat firing, and responsive loss-tolerant client steering;
 - packaged Windows executables for the master, browser, and game.
 
 Repository branch:
@@ -29,7 +29,7 @@ The ROM is **not included**. Place your own ROM here after downloading the branc
 data\pd.ntsc-final.z64
 ```
 
-Users in the same network game must use compatible ROMs and the same Protocol 20 build.
+Users in the same network game must use compatible ROMs and the same Protocol 21 build.
 
 ## Install required dependencies — PowerShell one-liner
 
@@ -82,7 +82,7 @@ A public host normally needs UDP `27100` forwarded to the hosting PC. The master
 
 ## Source
 
-The branch includes the C source corresponding to the packaged Protocol 20 game executable. The primary networking changes are under:
+The branch includes the C source corresponding to the packaged Protocol 21 game executable. The primary networking changes are under:
 
 ```text
 port/include/net/

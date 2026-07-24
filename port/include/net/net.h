@@ -5,7 +5,7 @@
 #include "constants.h"
 #include "net/netbuf.h"
 
-#define NET_PROTOCOL_VER 20
+#define NET_PROTOCOL_VER 21
 #define NET_QUERY_MAGIC "PDQM\x01"
 
 #define NET_MAX_CLIENTS MAX_PLAYERS
@@ -72,7 +72,7 @@ struct netplayermove {
 	f32 zoomfov; // manual zoom fov for the current gun; synced only if UCMD_AIMING is set
 	f32 movespeed[2]; // move inputs, [0] is forward, [1] is sideways; used mostly for animation
 	f32 angles[2]; // view angles, [0] is theta, [1] is verta
-	f32 slayerturn[2]; // per-frame guided-rocket pitch and yaw deltas
+	f32 slayerturn[2]; // cumulative guided-rocket pitch and yaw input
 	s8 slayerthrottle; // guided-rocket right-stick throttle input
 	f32 crosspos[2]; // crosshair position in aiming mode; normalized to default aspect ratio
 	s8 weaponnum; // switch to this weapon if UCMD_SELECT is set
@@ -106,9 +106,10 @@ struct netclient {
 	u32 forcetick; // tick on which the client's position was forced, or 0 if not forcing
 	u32 lerpticks; // how many ticks we've been lerping the position
 
-	f32 slayerturn[2]; // latest local guided-rocket turn input
+	f32 slayerturn[2]; // cumulative local guided-rocket turn input
 	s8 slayerthrottle; // latest local guided-rocket throttle input
 	u32 slayerappliedtick; // newest Slayer input tick applied by the server
+	f32 slayerappliedturn[2]; // cumulative Slayer input already applied by server
 
 	struct netbuf out; // outbound messages are written here, except broadcasts
 	struct netbuf in; // incoming packets are fed here

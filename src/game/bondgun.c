@@ -5045,6 +5045,15 @@ void bgunCreateFiredProjectile(s32 handnum)
 						struct netclient *ownercl = netClientForPlayerNum(g_Vars.currentplayernum);
 
 						if (ownercl) {
+							/*
+							 * Start a new cumulative steering stream. Ignore
+							 * packets at or before the input tick that fired
+							 * this rocket.
+							 */
+							ownercl->slayerappliedtick = ownercl->inmove[0].tick;
+							ownercl->slayerappliedturn[0] = 0.0f;
+							ownercl->slayerappliedturn[1] = 0.0f;
+
 							netmsgSvcSlayerRocketWrite(&g_NetMsgRel, weapon->base.prop, ownercl);
 						}
 					}

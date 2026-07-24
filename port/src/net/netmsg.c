@@ -1504,6 +1504,10 @@ static void netSlayerFbwEngage(struct prop *rocketprop, const char *source)
 
 	const s32 prevplayernum = g_Vars.currentplayernum;
 	setCurrentPlayerNum(playernum);
+
+	g_NetLocalClient->slayerturn[0] = 0.0f;
+	g_NetLocalClient->slayerturn[1] = 0.0f;
+	g_NetLocalClient->slayerthrottle = 0;
 	playerLaunchSlayerRocket(rocketprop->weapon);
 	setCurrentPlayerNum(prevplayernum);
 
