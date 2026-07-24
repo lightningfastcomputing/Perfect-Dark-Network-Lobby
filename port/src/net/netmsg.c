@@ -153,17 +153,6 @@ g_NetBotVisualStates[botnum].pos = *visualpos;
 g_NetBotVisualStates[botnum].valid = true;
 }
 
-static void netmsgResetBotVisualState(u8 botnum)
-{
-if (botnum < MAX_BOTS) {
-g_NetBotVisualStates[botnum].chr = NULL;
-g_NetBotVisualStates[botnum].pos.x = 0.0f;
-g_NetBotVisualStates[botnum].pos.y = 0.0f;
-g_NetBotVisualStates[botnum].pos.z = 0.0f;
-g_NetBotVisualStates[botnum].valid = false;
-}
-}
-
 bool netmsgGetBotVisualPosition(struct chrdata *chr, struct coord *out)
 {
 if (g_NetMode != NETMODE_CLIENT || !chr || !out) {
@@ -1983,6 +1972,12 @@ u32 netmsgSvcBotStateWrite(struct netbuf *dst, struct chrdata *chr, u8 botnum)
 	const f32 animspeed = chr->model->anim
 	                ? chr->model->anim->playspeed
 	                : 0.0f;
+	const u8 animflip = chr->model->anim
+	                ? chr->model->anim->flip
+	                : 0;
+	const f32 animendframe = chr->model->anim
+	                ? chr->model->anim->endframe
+	                : 0.0f;
 	const s8 weaponnum = chr->aibot
 			? chr->aibot->weaponnum
 			: WEAPON_UNARMED;
@@ -2009,6 +2004,9 @@ const u8 firingmask =
 	netbufWriteS16(dst, animnum);
 	netbufWriteF32(dst, animframe);
 	netbufWriteF32(dst, animspeed);
+	netbufWriteU8(dst, animflip);
+	netbufWriteF32(dst, animendframe);
+	netbufWriteF32(dst, chr->ground);
 	netbufWriteS8(dst, weaponnum);
 	netbufWriteU8(dst, gunfunc);
 	netbufWriteU8(dst, heldmask);
@@ -2054,6 +2052,9 @@ u32 netmsgSvcBotStateRead(struct netbuf *src, struct netclient *srccl)
 	const s16 animnum = netbufReadS16(src);
 	const f32 animframe = netbufReadF32(src);
 	const f32 animspeed = netbufReadF32(src);
+	const u8 animflip = netbufReadU8(src);
+	const f32 animendframe = netbufReadF32(src);
+	const f32 hostground = netbufReadF32(src);
 	const s8 weaponnum = netbufReadS8(src);
 	const u8 gunfunc = netbufReadU8(src);
 	const u8 heldmask = netbufReadU8(src);
@@ -2133,19 +2134,62 @@ botSpawn(chr, true);
 	 * SVC_CHR_DAMAGE remains responsible for starting the local death state.
 	 */
 	if (hostdead) {
-	        for (s32 hand = 0; hand < 2; hand++) {
-	                if (chr->weapons_held[hand]) {
-	                        weaponDeleteFromChr(chr, hand);
-	                        chr->weapons_held[hand] = NULL;
-	                }
+		for (s32 hand = 0; hand < 2; hand++) {
+			if (chr->weapons_held[hand]) {
+				weaponDeleteFromChr(chr, hand);
+				chr->weapons_held[hand] = NULL;
+			}
 
-	                chrSetHandFiring(chr, hand, false);
-	                chrSetFiring(chr, hand, false);
-	        }
-		netmsgResetBotVisualState(botnum);
+			chrSetHandFiring(chr, hand, false);
+			chrSetFiring(chr, hand, false);
+		}
 
-	        chr->damage = hostdamage;
-	        return src->error;
+		/*
+		 * Death animations translate the root and may be randomly flipped.
+		 * Copy the complete host pose and ground reference; otherwise a
+		 * different local pose can finish face-down above the actual floor.
+		 */
+		chrSetPos(chr, &pos, rooms, lookangle, false);
+		chrSetRotY(chr, bodyroty);
+		chrSetLookAngle(chr, lookangle);
+		modelSetChrRotY(chr->model, modelroty);
+
+		chr->ground = hostground;
+		chr->manground = hostground;
+		chr->sumground = hostground * (PAL ? 8.4175090789795f : 9.999998f);
+
+		if ((chr->model->definition->rootnode->type & 0xff) == MODELNODETYPE_CHRINFO) {
+			union modelrwdata *rwdata = modelGetNodeRwData(
+					chr->model,
+					chr->model->definition->rootnode
+			);
+			rwdata->chrinfo.ground = hostground;
+		}
+
+		if (chr->model->anim && animnum > 0) {
+			if (chr->model->anim->animnum != animnum
+					|| chr->model->anim->flip != animflip) {
+				modelSetAnimation(
+						chr->model,
+						animnum,
+						animflip,
+						animframe,
+						animspeed,
+						0.0f
+				);
+			} else {
+				modelSetAnimFrame(chr->model, animframe);
+				chr->model->anim->playspeed = animspeed;
+			}
+
+			modelSetAnimEndFrame(chr->model, animendframe);
+		}
+
+		modelSetRootPosition(chr->model, &visualpos);
+		netmsgSetBotVisualPosition(botnum, chr, &visualpos);
+
+		chr->damage = hostdamage;
+		return src->error;
 	}
 
 	/*
