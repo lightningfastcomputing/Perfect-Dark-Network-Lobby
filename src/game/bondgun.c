@@ -76,6 +76,26 @@
 // Max downwards pitch when changing guns or reloading a classic gun
 #define MAX_PITCH 0.87252569198608f
 
+// Network peers tick remote players through this first-person weapon code too.
+// Keep local sounds unchanged, but attach remote weapon sounds to their player.
+static struct sndstate *bgunStartWeaponSound(s16 soundnum, struct sndstate **handle,
+		f32 pitch, bool applyconfig)
+{
+#ifndef PLATFORM_N64
+	if (g_NetMode && g_Vars.currentplayer->isremote) {
+		return playerSndStart(var80095200, soundnum, handle, g_Vars.currentplayernum,
+				pitch, applyconfig ? 1 : -1, applyconfig ? 0 : -1);
+	}
+#endif
+
+	if (applyconfig) {
+		return snd00010718(handle, 0, AL_VOL_FULL, AL_PAN_CENTER,
+				soundnum, pitch, 1, -1, true);
+	}
+
+	return sndStart(var80095200, soundnum, handle, -1, -1, pitch, -1, -1);
+}
+
 #if VERSION >= VERSION_PAL_BETA
 struct sndstate *g_CasingAudioHandles[2];
 s32 var8009d0d8;
@@ -842,10 +862,10 @@ void bgun0f0981e8(struct hand *hand, struct modeldef *modeldef)
 							case GUNCMD_PLAYSOUND:
 #if VERSION >= VERSION_NTSC_1_0
 								if (hasspeed) {
-									snd00010718(0, 0, AL_VOL_FULL, AL_PAN_CENTER, cmd->unk04, speed, 1, -1, 1);
+									bgunStartWeaponSound(cmd->unk04, NULL, speed, true);
 									hasspeed = false;
 								} else {
-									snd00010718(0, 0, AL_VOL_FULL, AL_PAN_CENTER, cmd->unk04, 1.0f, 1, -1, 1);
+									bgunStartWeaponSound(cmd->unk04, NULL, 1.0f, true);
 								}
 #else
 								audiohandle = sndStart(var80095200, cmd->unk04, NULL, -1, -1, -1, -1, -1);
@@ -1684,7 +1704,7 @@ s32 bgunTickIncReload(struct handweaponinfo *info, s32 handnum, struct hand *han
 					// No reload sound
 					break;
 				default:
-					sndStart(var80095200, SFX_RELOAD_DEFAULT, 0, -1, -1, -1, -1, -1);
+					bgunStartWeaponSound(SFX_RELOAD_DEFAULT, NULL, -1.0f, false);
 					break;
 				}
 			}
@@ -2001,9 +2021,11 @@ void bgun0f09a6f8(struct handweaponinfo *info, s32 handnum, struct hand *hand, s
 				struct sndstate *handle = NULL;
 
 				if (hand->audiohandle2 == NULL) {
-					handle = sndStart(var80095200, gsetGetSingleShootSound(&hand->gset), &hand->audiohandle2, -1, -1, -1, -1, -1);
+					handle = bgunStartWeaponSound(gsetGetSingleShootSound(&hand->gset),
+							&hand->audiohandle2, -1.0f, false);
 				} else if (hand->audiohandle3 == NULL) {
-					handle = sndStart(var80095200, gsetGetSingleShootSound(&hand->gset), &hand->audiohandle3, -1, -1, -1, -1, -1);
+					handle = bgunStartWeaponSound(gsetGetSingleShootSound(&hand->gset),
+							&hand->audiohandle3, -1.0f, false);
 				}
 
 				hand->lastshootframe60 = g_Vars.lvframe60;
@@ -3044,7 +3066,7 @@ s32 bgunTickIncChangeGun(struct handweaponinfo *info, s32 handnum, struct hand *
 					prevpri1 = osGetThreadPri(0);
 					osSetThreadPri(0, osGetThreadPri(&g_AudioManager.thread) + 1);
 #endif
-					handle1 = sndStart(var80095200, SFX_EQUIP_HORIZONSCANNER, 0, -1, -1, -1, -1, -1);
+					handle1 = bgunStartWeaponSound(SFX_EQUIP_HORIZONSCANNER, NULL, -1.0f, false);
 
 					if (handle1) {
 						audioPostEvent(handle1, AL_SNDP_PITCH_EVT, *(s32 *)&speed1);
@@ -3055,14 +3077,14 @@ s32 bgunTickIncChangeGun(struct handweaponinfo *info, s32 handnum, struct hand *
 #endif
 					break;
 				case WEAPON_LASER:
-					sndStart(var80095200, SFX_PICKUP_LASER, 0, -1, -1, -1, -1, -1);
+					bgunStartWeaponSound(SFX_PICKUP_LASER, NULL, -1.0f, false);
 					break;
 				case WEAPON_COMBATKNIFE:
-					sndStart(var80095200, SFX_PICKUP_KNIFE, 0, -1, -1, -1, -1, -1);
+					bgunStartWeaponSound(SFX_PICKUP_KNIFE, NULL, -1.0f, false);
 					break;
 				case WEAPON_REMOTEMINE:
 					if (handnum == HAND_RIGHT) {
-						sndStart(var80095200, SFX_PICKUP_MINE, 0, -1, -1, -1, -1, -1);
+						bgunStartWeaponSound(SFX_PICKUP_MINE, NULL, -1.0f, false);
 					}
 					break;
 				case WEAPON_TIMEDMINE:
@@ -3076,7 +3098,7 @@ s32 bgunTickIncChangeGun(struct handweaponinfo *info, s32 handnum, struct hand *
 				case WEAPON_COMMSRIDER:
 				case WEAPON_TRACERBUG:
 				case WEAPON_TARGETAMPLIFIER:
-					sndStart(var80095200, SFX_PICKUP_MINE, 0, -1, -1, -1, -1, -1);
+					bgunStartWeaponSound(SFX_PICKUP_MINE, NULL, -1.0f, false);
 					break;
 				case WEAPON_TRANQUILIZER:
 				case WEAPON_PSYCHOSISGUN:
@@ -3087,7 +3109,7 @@ s32 bgunTickIncChangeGun(struct handweaponinfo *info, s32 handnum, struct hand *
 					osSetThreadPri(0, osGetThreadPri(&g_AudioManager.thread) + 1);
 #endif
 
-					handle2 = sndStart(var80095200, SFX_PICKUP_GUN, 0, -1, -1, -1, -1, -1);
+					handle2 = bgunStartWeaponSound(SFX_PICKUP_GUN, NULL, -1.0f, false);
 
 					if (handle2) {
 						audioPostEvent(handle2, AL_SNDP_PITCH_EVT, *(s32 *)&speed2);
@@ -3105,7 +3127,7 @@ s32 bgunTickIncChangeGun(struct handweaponinfo *info, s32 handnum, struct hand *
 					osSetThreadPri(0, osGetThreadPri(&g_AudioManager.thread) + 1);
 #endif
 
-					handle3 = sndStart(var80095200, SFX_PICKUP_GUN, 0, -1, -1, -1, -1, -1);
+					handle3 = bgunStartWeaponSound(SFX_PICKUP_GUN, NULL, -1.0f, false);
 
 					if (handle3) {
 						audioPostEvent(handle3, AL_SNDP_PITCH_EVT, *(s32 *)&speed3);
@@ -3145,7 +3167,7 @@ s32 bgunTickIncChangeGun(struct handweaponinfo *info, s32 handnum, struct hand *
 					// No equip sound
 					break;
 				default:
-					sndStart(var80095200, SFX_PICKUP_GUN, 0, -1, -1, -1, -1, -1);
+					bgunStartWeaponSound(SFX_PICKUP_GUN, NULL, -1.0f, false);
 					break;
 				}
 			}
@@ -11360,11 +11382,7 @@ void bgunPlayPropHitSound(struct gset *gset, struct prop *prop, s32 texturenum)
 				psGetTheoreticalVolPan(&prop->pos, prop->rooms, soundnum, &vol, &pan);
 
 				if (vol) {
-					sndStart(var80095200, soundnum, handle, -1, -1, -1, -1, -1);
-
-					if (*handle) {
-						sndAdjust(handle, 0, vol, pan, soundnum, 1, 1, -1, 1);
-					}
+					snd00010718(handle, 0, vol, pan, soundnum, 1, 1, -1, true);
 				}
 			}
 
@@ -11411,11 +11429,7 @@ void bgunPlayPropHitSound(struct gset *gset, struct prop *prop, s32 texturenum)
 				psGetTheoreticalVolPan(&prop->pos, prop->rooms, soundnum, &vol, &pan);
 
 				if (vol) {
-					sndStart(var80095200, soundnum, handle, -1, -1, -1, -1, -1);
-
-					if (*handle) {
-						sndAdjust(handle, 0, vol, pan, soundnum, 1, 1, -1, 1);
-					}
+					snd00010718(handle, 0, vol, pan, soundnum, 1, 1, -1, true);
 				}
 			}
 
@@ -11585,10 +11599,13 @@ void bgunPlayGlassHitSound(struct coord *pos, RoomNum *rooms, s32 texturenum)
 		struct sndstate **handle = bgunAllocateAudioHandle();
 
 		if (handle) {
-			sndStart(var80095200, SFX_HIT_GLASS, handle, -1, -1, -1, -1, -1);
+			s32 vol;
+			s32 pan;
 
-			if (*handle) {
-				psApplyVolPan(*handle, pos, 400, 2500, 3000, rooms, SFX_HIT_GLASS, AL_VOL_FULL, 0);
+			psGetTheoreticalVolPan(pos, rooms, SFX_HIT_GLASS, &vol, &pan);
+
+			if (vol) {
+				snd00010718(handle, 0, vol, pan, SFX_HIT_GLASS, 1, 1, -1, true);
 			}
 		}
 	}
@@ -11626,13 +11643,11 @@ void bgunPlayBgHitSound(struct gset *gset, struct coord *hitpos, s32 texturenum,
 				// Laser sounds
 				s16 sounds[] = {SFX_CLOAK_ON, SFX_CLOAK_OFF};
 				soundnum = sounds[rand1 % ARRAYCOUNT(sounds)];
-				sndStart(var80095200, soundnum, handle, -1, -1, -1, -1, -1);
 				overridden = true;
 			}
 		} else if (gset->weaponnum == WEAPON_COMBATKNIFE || gset->weaponnum == WEAPON_BOLT) {
 			// Knives and bolts make a metal sound
 			soundnum = SFX_HIT_METAL_8079;
-			sndStart(var80095200, soundnum, handle, -1, -1, -1, -1, -1);
 			overridden = true;
 		} else if (gset->weaponnum == WEAPON_REMOTEMINE
 				|| gset->weaponnum == WEAPON_PROXIMITYMINE
@@ -11643,7 +11658,6 @@ void bgunPlayBgHitSound(struct gset *gset, struct coord *hitpos, s32 texturenum,
 				|| gset->weaponnum == WEAPON_ECMMINE) {
 			// Mine landing/activation sound
 			soundnum = SFX_80AA;
-			sndStart(var80095200, soundnum, handle, -1, -1, -1, -1, -1);
 			overridden = true;
 		} else {
 			// Ricochet sounds
@@ -11660,12 +11674,18 @@ void bgunPlayBgHitSound(struct gset *gset, struct coord *hitpos, s32 texturenum,
 			};
 
 			soundnum = sounds[rand1 % ARRAYCOUNT(sounds)];
-			sndStart(var80095200, soundnum, handle, -1, -1, -1, -1, -1);
 			overridden = false;
 		}
 
-		if (*handle != NULL) {
-			psApplyVolPan(*handle, hitpos, 400, 2500, 3000, rooms, soundnum, AL_VOL_FULL, 0);
+		if (soundnum != -1) {
+			s32 vol;
+			s32 pan;
+
+			psGetTheoreticalVolPan(hitpos, rooms, soundnum, &vol, &pan);
+
+			if (vol) {
+				snd00010718(handle, 0, vol, pan, soundnum, 1, 1, -1, true);
+			}
 		}
 
 		if (overridden) {
@@ -11686,11 +11706,17 @@ void bgunPlayBgHitSound(struct gset *gset, struct coord *hitpos, s32 texturenum,
 				if (type != NULL) {
 					s32 index = rand2 % type->numsounds;
 					soundnum = type->sounds[index];
-					sndStart(var80095200, soundnum, handle, -1, -1, -1, -1, -1);
 				}
 
-				if (*handle != NULL) {
-					psApplyVolPan(*handle, hitpos, 400, 2500, 3000, rooms, soundnum, AL_VOL_FULL, 0);
+				if (soundnum != -1) {
+					s32 vol;
+					s32 pan;
+
+					psGetTheoreticalVolPan(hitpos, rooms, soundnum, &vol, &pan);
+
+					if (vol) {
+						snd00010718(handle, 0, vol, pan, soundnum, 1, 1, -1, true);
+					}
 				}
 			}
 		}

@@ -10537,6 +10537,9 @@ netmsgSvcPropMoveWrite(&g_NetMsgRel, projectileobj->base.prop, NULL);
 								func0f065e74(&gunpos, gunrooms, &hitpos, hitrooms);
 							}
 
+#ifndef PLATFORM_N64
+							if (g_NetMode != NETMODE_CLIENT)
+#endif
 							explosionCreateSimple(NULL, &hitpos, hitrooms, EXPLOSIONTYPE_PHOENIX, playernum);
 						}
 					}

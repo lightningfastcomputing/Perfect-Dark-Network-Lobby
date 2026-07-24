@@ -945,19 +945,43 @@ u32 netmsgSvcPlayerStatsRead(struct netbuf *src, struct netclient *srccl)
 	struct coord newshotspeed; netbufReadCoord(src, &newshotspeed);
 	const s16 deathshooter = netbufReadS16(src);
 	const bool handused[2] = { (flags & (1 << 2)) != 0, (flags & (1 << 3)) != 0 };
+	s16 handammo[2][2] = { 0 };
+	s16 ammoheld[ARRAYCOUNT(g_Vars.currentplayer->ammoheldarr)] = { 0 };
+
+	for (s32 i = 0; i < 2; ++i) {
+		if (handused[i]) {
+			handammo[i][0] = netbufReadS16(src);
+			handammo[i][1] = netbufReadS16(src);
+		}
+	}
+
+	const u32 ammomask = netbufReadU32(src);
+	for (s32 i = 0; i < ARRAYCOUNT(ammoheld); ++i) {
+		if (i >= 32 || (ammomask & (1u << i))) {
+			ammoheld[i] = netbufReadS16(src);
+		}
+	}
 
 	if (src->error) {
 		return src->error;
 	}
 
-	struct netclient *actcl = g_NetClients + clid;
-	if (actcl->state < CLSTATE_GAME) {
-		return 1;
+	/*
+	 * Reliable state snapshots can arrive after SVC_STAGE_START but before
+	 * the new stage has attached its player objects. Always consume the
+	 * complete variable-length message first so its ammo payload cannot be
+	 * mistaken for another message ID.
+	 */
+	if (clid >= g_NetMaxClients) {
+		sysLogPrintf(LOG_WARNING, "NET: invalid SVC_PLAYER_STATS client %u", clid);
+		return 0;
 	}
 
+	struct netclient *actcl = g_NetClients + clid;
 	struct player *pl = actcl->player;
-	if (!pl || !pl->prop) {
-		return src->error;
+
+	if (actcl->state < CLSTATE_GAME || !pl || !pl->prop) {
+		return 0;
 	}
 
 	pl->prop->chr->damage = newdamage;
@@ -967,15 +991,14 @@ u32 netmsgSvcPlayerStatsRead(struct netbuf *src, struct netclient *srccl)
 
 	for (s32 i = 0; i < 2; ++i) {
 		if (handused[i]) {
-			pl->hands[i].loadedammo[0] = netbufReadS16(src);
-			pl->hands[i].loadedammo[1] = netbufReadS16(src);
+			pl->hands[i].loadedammo[0] = handammo[i][0];
+			pl->hands[i].loadedammo[1] = handammo[i][1];
 		}
 	}
 
-	const u32 ammomask = netbufReadU32(src);
 	for (s32 i = 0; i < ARRAYCOUNT(pl->ammoheldarr); ++i) {
 		if (i >= 32 || (ammomask & (1 << i))) {
-			pl->ammoheldarr[i] = netbufReadS16(src);
+			pl->ammoheldarr[i] = ammoheld[i];
 		} else {
 			pl->ammoheldarr[i] = 0;
 		}

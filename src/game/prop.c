@@ -477,7 +477,11 @@ void weaponPlayWhooshSound(s32 weaponnum, struct prop *prop)
 	}
 
 	if (soundnum != -1) {
-		if (prop == g_Vars.currentplayer->prop) {
+		if (prop == g_Vars.currentplayer->prop
+#ifndef PLATFORM_N64
+				&& (!g_NetMode || !g_Vars.currentplayer->isremote)
+#endif
+		) {
 			struct sndstate *handle;
 #if VERSION >= VERSION_NTSC_1_0
 			u32 stack;
@@ -542,7 +546,11 @@ void func0f060bac(s32 weaponnum, struct prop *prop)
 	}
 
 	if (soundnum != -1) {
-		if (prop == g_Vars.currentplayer->prop) {
+		if (prop == g_Vars.currentplayer->prop
+#ifndef PLATFORM_N64
+				&& (!g_NetMode || !g_Vars.currentplayer->isremote)
+#endif
+		) {
 #if VERSION >= VERSION_NTSC_1_0
 			OSPri prevpri = osGetThreadPri(0);
 			osSetThreadPri(0, osGetThreadPri(&g_AudioManager.thread) + 1);
@@ -817,6 +825,9 @@ struct prop *shotCalculateHits(s32 handnum, bool isshooting, struct coord *gunpo
 					exppos.z = shotdata.hits[i].pos.z;
 
 					func0f065e74(&root->pos, root->rooms, &exppos, exprooms);
+#ifndef PLATFORM_N64
+					if (g_NetMode != NETMODE_CLIENT)
+#endif
 					explosionCreateSimple(0, &exppos, exprooms, EXPLOSIONTYPE_PHOENIX, g_Vars.currentplayernum);
 				}
 			}
@@ -863,6 +874,9 @@ struct prop *shotCalculateHits(s32 handnum, bool isshooting, struct coord *gunpo
 				bgunPlayBgHitSound(&shotdata.gset, &sp694.pos, sp694.texturenum, rooms2);
 
 				if (explosiveshells) {
+#ifndef PLATFORM_N64
+					if (g_NetMode != NETMODE_CLIENT)
+#endif
 					explosionCreateSimple(NULL, &sp694.pos, rooms2, EXPLOSIONTYPE_PHOENIX, g_Vars.currentplayernum);
 				} else {
 					if (!chrIsUsingPaintball(g_Vars.currentplayer->prop->chr)) {
