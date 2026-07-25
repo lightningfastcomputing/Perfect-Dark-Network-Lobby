@@ -41,7 +41,7 @@ All players should use the same build and compatible ROM.
 Open PowerShell and run:
 
 ```powershell
-$dir="$HOME\Thorfect-Dark-Coop"; $repo="https://github.com/lightningfastcomputing/Perfect-Dark-Network-Lobby.git"; $branch="cooperative-lobby-latest"; if(Test-Path "$dir\.git"){git -C $dir fetch origin $branch; git -C $dir checkout -B $branch "origin/$branch"; git -C $dir reset --hard "origin/$branch"}else{git clone --branch $branch --single-branch $repo $dir}; New-Item -ItemType Directory -Force "$dir\data" | Out-Null; if(Test-Path "$dir\data\pd.ntsc-final.z64"){Start-Process -FilePath "$dir\perfect_thork_browser.exe" -WorkingDirectory $dir}else{Write-Host "Downloaded successfully. Add your ROM to: $dir\data\pd.ntsc-final.z64" -ForegroundColor Yellow; Start-Process explorer.exe "$dir\data"}
+$dir="$HOME\Thorfect-Dark-Coop"; $repo="https://github.com/lightningfastcomputing/Perfect-Dark-Network-Lobby.git"; $branch="cooperative-lobby-latest"; if(Test-Path "$dir\.git"){git -C $dir fetch origin $branch; git -C $dir checkout -B $branch "origin/$branch"; git -C $dir reset --hard "origin/$branch"}else{git clone --branch $branch --single-branch $repo $dir}; New-Item -ItemType Directory -Force "$dir\data" | Out-Null; Start-Process -FilePath "$dir\pd.x86_64.exe" -WorkingDirectory $dir
 ```
 
 This command:
