@@ -79,6 +79,13 @@ static inline void sysLogSetPath(const char *fname)
 	}
 }
 
+void sysLogOpen(const char *fname)
+{
+	if (fname && fname[0]) {
+		sysLogSetPath(fname);
+	}
+}
+
 void sysInitArgs(s32 argc, const char **argv)
 {
 	sysArgc = argc;
@@ -89,7 +96,7 @@ void sysInit(void)
 {
 	startTick = sysGetMicroseconds();
 
-	if (sysArgCheck("--log")) {
+	if (sysArgCheck("--log") || sysArgCheck("--host") || sysArgCheck("--connect")) {
 		sysLogSetPath(LOG_FNAME);
 	}
 
@@ -185,7 +192,7 @@ void sysLogPrintf(s32 level, const char *fmt, ...)
 	if (logPath[0]) {
 		FILE *f = fopen(logPath, "ab");
 		if (f) {
-			fprintf(f, "%s%s\n", prefix[level], logmsg);
+			fprintf(f, "%s%s\n", prefix[level & 0x0f], logmsg);
 			fclose(f);
 		}
 	}

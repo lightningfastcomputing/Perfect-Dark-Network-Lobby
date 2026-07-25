@@ -45,6 +45,7 @@ struct menudialogdef g_CinemaMenuDialog;
 #ifndef PLATFORM_N64
 extern struct menudialogdef g_ExtendedMenuDialog;
 extern struct menudialogdef g_NetMenuDialog;
+extern struct menudialogdef g_NetCoopMenuDialog;
 extern MenuItemHandlerResult menuhandlerJoinGame(s32 operation, struct menuitem *item, union handlerdata *data);
 extern MenuItemHandlerResult menuhandlerJoinStart(s32 operation, struct menuitem *item, union handlerdata *data);
 extern MenuItemHandlerResult menuhandlerHostGame(s32 operation, struct menuitem *item, union handlerdata *data);
@@ -1301,6 +1302,19 @@ MenuItemHandlerResult menuhandlerBuddyOptionsContinue(s32 operation, struct menu
 	return 0;
 }
 
+static bool coopHasHumanBuddy(void)
+{
+#ifndef PLATFORM_N64
+	if (g_NetMode == NETMODE_SERVER
+			&& g_NetGameMode == NETGAMEMODE_COOP
+			&& g_NetNumClients == 2) {
+		return true;
+	}
+#endif
+
+	return (joyGetConnectedControllers() & 2) != 0;
+}
+
 #if VERSION >= VERSION_NTSC_1_0
 s32 getMaxAiBuddies(void)
 {
@@ -1407,7 +1421,7 @@ MenuItemHandlerResult menuhandlerCoopBuddy(s32 operation, struct menuitem *item,
 			s32 maxaibuddies = getMaxAiBuddies();
 			s32 human = 0;
 
-			if (joyGetConnectedControllers() & 2) {
+			if (coopHasHumanBuddy()) {
 				human = 1;
 			}
 
@@ -1420,7 +1434,7 @@ MenuItemHandlerResult menuhandlerCoopBuddy(s32 operation, struct menuitem *item,
 			s32 maxbuddies = 1 - g_MissionConfig.difficulty;
 			s32 human = 0;
 
-			if (joyGetConnectedControllers() & 2) {
+			if (coopHasHumanBuddy()) {
 				human = 1;
 			}
 
@@ -1454,7 +1468,7 @@ MenuItemHandlerResult menuhandlerCoopBuddy(s32 operation, struct menuitem *item,
 		{
 			s32 extra = 1;
 
-			if (joyGetConnectedControllers() & 2) {
+			if (coopHasHumanBuddy()) {
 				extra = 0;
 			}
 
@@ -1464,7 +1478,7 @@ MenuItemHandlerResult menuhandlerCoopBuddy(s32 operation, struct menuitem *item,
 		{
 			s32 extra = 1;
 
-			if (joyGetConnectedControllers() & 2) {
+			if (coopHasHumanBuddy()) {
 				extra = 0;
 			}
 
@@ -1476,7 +1490,7 @@ MenuItemHandlerResult menuhandlerCoopBuddy(s32 operation, struct menuitem *item,
 		{
 			s32 extra = 1;
 
-			if (joyGetConnectedControllers() & 2) {
+			if (coopHasHumanBuddy()) {
 				extra = 0;
 			}
 
@@ -4964,6 +4978,13 @@ MenuItemHandlerResult menuhandlerMainMenuCombatSimulator(s32 operation, struct m
 MenuItemHandlerResult menuhandlerMainMenuCooperative(s32 operation, struct menuitem *item, union handlerdata *data)
 {
 	if (operation == MENUOP_SET) {
+#ifndef PLATFORM_N64
+		if (g_NetMode == NETMODE_NONE) {
+			menuPushDialog(&g_NetCoopMenuDialog);
+			return 0;
+		}
+#endif
+
 		g_MissionConfig.iscoop = true;
 		g_MissionConfig.isanti = false;
 		menuPushDialog(&g_SelectMissionMenuDialog);
@@ -5065,7 +5086,7 @@ struct menuitem g_MainMenuMenuItems[] = {
 #ifdef PLATFORM_N64
 		MENUITEMFLAG_BIGFONT,
 #else
-		MENUITEMFLAG_BIGFONT | MENUITEMFLAG_ALWAYSDISABLED,
+		MENUITEMFLAG_BIGFONT,
 #endif
 		(uintptr_t)&mainMenuTextLabel,
 		0x00000002,
@@ -5077,7 +5098,7 @@ struct menuitem g_MainMenuMenuItems[] = {
 #ifdef PLATFORM_N64
 		MENUITEMFLAG_BIGFONT,
 #else
-		MENUITEMFLAG_BIGFONT | MENUITEMFLAG_ALWAYSDISABLED,
+		MENUITEMFLAG_BIGFONT,
 #endif
 		(uintptr_t)&mainMenuTextLabel,
 		0x00000003,
@@ -5089,7 +5110,7 @@ struct menuitem g_MainMenuMenuItems[] = {
 #ifdef PLATFORM_N64
 		MENUITEMFLAG_BIGFONT,
 #else
-		MENUITEMFLAG_BIGFONT | MENUITEMFLAG_ALWAYSDISABLED,
+		MENUITEMFLAG_BIGFONT,
 #endif
 		(uintptr_t)&mainMenuTextLabel,
 		0x00000004,
@@ -5101,7 +5122,7 @@ struct menuitem g_MainMenuMenuItems[] = {
 #ifdef PLATFORM_N64
 		MENUITEMFLAG_BIGFONT,
 #else
-		MENUITEMFLAG_BIGFONT | MENUITEMFLAG_ALWAYSDISABLED,
+		MENUITEMFLAG_BIGFONT,
 #endif
 		(uintptr_t)&mainMenuTextLabel,
 		0x00000005,

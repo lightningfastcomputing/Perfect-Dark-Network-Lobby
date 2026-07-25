@@ -5,7 +5,7 @@
 #include "constants.h"
 #include "net/netbuf.h"
 
-#define NET_PROTOCOL_VER 21
+#define NET_PROTOCOL_VER 32
 #define NET_QUERY_MAGIC "PDQM\x01"
 
 #define NET_MAX_CLIENTS MAX_PLAYERS
@@ -18,6 +18,9 @@
 
 #define NET_NULL_CLIENT 0xFF
 #define NET_NULL_PROP 0
+
+#define NETGAMEMODE_COMBAT 0
+#define NETGAMEMODE_COOP   1
 
 #define NETCHAN_DEFAULT 0
 #define NETCHAN_CONTROL 1
@@ -118,6 +121,7 @@ struct netclient {
 };
 
 extern s32 g_NetMode;
+extern s32 g_NetGameMode;
 
 extern s32 g_NetJoinLatch;
 extern s32 g_NetHostLatch;

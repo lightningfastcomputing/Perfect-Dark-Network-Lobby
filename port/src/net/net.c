@@ -31,6 +31,7 @@
 #include "utils.h"
 
 s32 g_NetMode = NETMODE_NONE;
+s32 g_NetGameMode = NETGAMEMODE_COMBAT;
 
 s32 g_NetHostLatch = false;
 s32 g_NetJoinLatch = false;
@@ -195,7 +196,7 @@ static inline void netClientRecordMove(struct netclient *cl, const struct player
 	move->movespeed[1] = pl->speedsideways;
 	move->angles[0] = pl->vv_theta;
 	move->angles[1] = pl->vv_verta;
-  move->pos = (pl->prop) ? pl->prop->pos : pl->cam_pos;
+	move->pos = (pl->prop) ? pl->prop->pos : pl->cam_pos;
 
 	move->crosspos[0] = pl->crosspos[0];
 	move->crosspos[1] = pl->crosspos[1];
@@ -371,7 +372,7 @@ static void netServerQueryResponse(ENetAddress *address)
 	static ENetBuffer ebuf;
 	struct netbuf buf = { .data = data, .size = sizeof(data) };
 	const u8 flags = (g_NetLocalClient && g_NetLocalClient->state > CLSTATE_LOBBY)
-		| (0 << 1); // TODO: this will indicate coop/anti/etc
+		| (g_NetGameMode << 1);
 	const char *modDir = fsGetModDir();
 	if (!modDir) {
 		modDir = "";
@@ -498,6 +499,7 @@ s32 netStartServer(u16 port, s32 maxclients)
 	netClientReadConfig(g_NetLocalClient, 0);
 
 	g_NetMode = NETMODE_SERVER;
+	sysLogOpen("pd-server.log");
 
 	g_NetTick = 0;
 	g_NetNextUpdate = 0;
@@ -600,6 +602,7 @@ s32 netStartClient(const char *addr)
 	netClientReadConfig(g_NetLocalClient, 0);
 
 	g_NetMode = NETMODE_CLIENT;
+	sysLogOpen("pd-client.log");
 
 	g_NetTick = 0;
 	g_NetNextUpdate = 0;
@@ -744,6 +747,7 @@ static void netServerEvReceive(struct netclient *cl)
 			case CLC_MOVE: rc = netmsgClcMoveRead(&cl->in, cl); break;
 			case CLC_SETTINGS: rc = netmsgClcSettingsRead(&cl->in, cl); break;
 			case CLC_LOBBY_READY: rc = netmsgClcLobbyReadyRead(&cl->in, cl); break;
+			case CLC_CHR_DAMAGE: rc = netmsgClcChrDamageRead(&cl->in, cl); break;
 			default:
 				rc = 1;
 				break;
@@ -800,6 +804,7 @@ static void netClientEvReceive(struct netclient *cl)
 			case SVC_PROP_DOOR: rc = netmsgSvcPropDoorRead(&cl->in, cl); break;
 			case SVC_PROP_LIFT: rc = netmsgSvcPropLiftRead(&cl->in, cl); break;
 			case SVC_BOT_STATE: rc = netmsgSvcBotStateRead(&cl->in, cl); break;
+			case SVC_CHR_STATE: rc = netmsgSvcChrStateRead(&cl->in, cl); break;
 			case SVC_CHR_DAMAGE: rc = netmsgSvcChrDamageRead(&cl->in, cl); break;
 			case SVC_CHR_DISARM: rc = netmsgSvcChrDisarmRead(&cl->in, cl); break;
 			case SVC_EFFECT_BEAM: rc = netmsgSvcEffectBeamRead(&cl->in, cl); break;
@@ -842,6 +847,14 @@ void netStartFrame(void)
 	if (!g_NetMode) {
 		return;
 	}
+
+	/*
+	 * Receive handlers can queue authoritative replies (for example, a
+	 * validated co-op character hit). Clear the frame buffers before polling
+	 * so those replies survive until netEndFrame flushes them.
+	 */
+	netbufStartWrite(&g_NetMsg);
+	netbufStartWrite(&g_NetMsgRel);
 
 	++g_NetTick;
 
@@ -902,8 +915,6 @@ void netStartFrame(void)
 		}
 	}
 
-	netbufStartWrite(&g_NetMsg);
-	netbufStartWrite(&g_NetMsgRel);
 }
 
 void netEndFrame(void)
@@ -946,7 +957,46 @@ void netEndFrame(void)
 					struct chrdata *botchr = g_MpBotChrPtrs[i];
 
 					if (botchr && botchr->prop && botchr->model) {
+						if (netbufWriteLeft(&g_NetMsg) < 96) {
+							g_NetUnreliableFrameLen += netSend(
+									NULL,
+									&g_NetMsg,
+									false,
+									NETCHAN_DEFAULT
+							);
+						}
+
 						netmsgSvcBotStateWrite(&g_NetMsg, botchr, i);
+					}
+				}
+
+				if (g_NetGameMode == NETGAMEMODE_COOP) {
+					for (s32 i = 0; i < g_NumChrSlots; ++i) {
+						struct chrdata *chr = &g_ChrSlots[i];
+
+						if (chr->chrnum < 0
+								|| !chr->prop
+								|| !chr->model
+								|| chr->prop->type != PROPTYPE_CHR
+								|| chr->aibot) {
+							continue;
+						}
+
+						/*
+						 * A complete campaign chr snapshot is at most 79 bytes.
+						 * Flush before it no longer fits so a busy mission can
+						 * replicate every guard without overflowing NET_BUFSIZE.
+						 */
+						if (netbufWriteLeft(&g_NetMsg) < 96) {
+							g_NetUnreliableFrameLen += netSend(
+									NULL,
+									&g_NetMsg,
+									false,
+									NETCHAN_DEFAULT
+							);
+						}
+
+						netmsgSvcChrStateWrite(&g_NetMsg, chr);
 					}
 				}
 

@@ -27,6 +27,7 @@
 #include "game/mplayer/mplayer.h"
 #include "game/options.h"
 #include "game/propobj.h"
+#include "game/propsnd.h"
 #include "bss.h"
 #include "lib/lib_17ce0.h"
 #include "lib/vi.h"
@@ -2550,7 +2551,11 @@ void bmoveTick(bool allowc1x, bool allowc1y, bool allowc1buttons, bool ignorec2)
 	// Update footstep sounds
 	if ((g_Vars.currentplayer->bondmovemode == MOVEMODE_WALK || g_Vars.currentplayer->bondmovemode == MOVEMODE_GRAB)
 			&& (g_Vars.currentplayer->speedforwards || g_Vars.currentplayer->speedsideways)
-			&& (!g_Vars.normmplayerisrunning || PLAYERCOUNT() == 1)) {
+			&& (!g_Vars.normmplayerisrunning || PLAYERCOUNT() == 1
+#ifndef PLATFORM_N64
+				|| g_NetMode
+#endif
+			)) {
 		chr = g_Vars.currentplayer->prop->chr;
 
 		if (g_Vars.currentplayer->cameramode == CAMERAMODE_DEFAULT
@@ -2583,7 +2588,8 @@ void bmoveTick(bool allowc1x, bool allowc1y, bool allowc1buttons, bool ignorec2)
 				sound = footstepChooseSound(chr, distance > 10);
 
 				if (sound != -1) {
-					snd00010718(0, 0, AL_VOL_FULL, AL_PAN_CENTER, sound, 1, 1, -1, true);
+					psCreate(NULL, g_Vars.currentplayer->prop, sound, -1, -1,
+							PSFLAG_0400, 0, PSTYPE_FOOTSTEP, NULL, -1, NULL, -1, -1, -1, -1);
 				}
 			}
 		}

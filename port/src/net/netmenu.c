@@ -4,6 +4,7 @@
 #include <math.h>
 #include <PR/ultratypes.h>
 #include "platform.h"
+#include "bss.h"
 #include "data.h"
 #include "types.h"
 #include "game/mainmenu.h"
@@ -19,10 +20,12 @@
 #include "net/netmsg.h"
 
 extern MenuItemHandlerResult menuhandlerMainMenuCombatSimulator(s32 operation, struct menuitem *item, union handlerdata *data);
+extern MenuItemHandlerResult menuhandlerMainMenuCooperative(s32 operation, struct menuitem *item, union handlerdata *data);
 extern MenuItemHandlerResult menuhandlerMpAdvancedSetup(s32 operation, struct menuitem *item, union handlerdata *data);
 extern struct menuitem g_MpPlayerSetup234MenuItems[];
 extern struct menudialogdef g_NetJoinPlayerSetupMenuDialog;
 extern struct menudialogdef g_NetJoiningDialog;
+extern struct menudialogdef g_NetCoopJoiningDialog;
 
 static s32 g_NetMenuMaxPlayers = NET_MAX_CLIENTS;
 static s32 g_NetMenuPort = NET_DEFAULT_PORT;
@@ -35,10 +38,10 @@ static MenuItemHandlerResult menuhandlerHostMaxPlayers(s32 operation, struct men
 {
 	switch (operation) {
 	case MENUOP_GETSLIDER:
-		data->slider.value = g_NetMenuMaxPlayers;
+		data->slider.value = g_NetGameMode == NETGAMEMODE_COOP ? 2 : g_NetMenuMaxPlayers;
 		break;
 	case MENUOP_SET:
-		if (data->slider.value) {
+		if (g_NetGameMode != NETGAMEMODE_COOP && data->slider.value) {
 			g_NetMenuMaxPlayers = data->slider.value;
 		}
 		break;
@@ -66,8 +69,12 @@ static char *menuhandlerHostPortValue(struct menuitem *item)
 MenuItemHandlerResult menuhandlerHostStart(s32 operation, struct menuitem *item, union handlerdata *data)
 {
 	if (operation == MENUOP_SET) {
-		if (netStartServer(g_NetMenuPort, g_NetMenuMaxPlayers) == 0) {
-			menuPushDialog(&g_NetJoiningDialog);
+		const s32 maxplayers = g_NetGameMode == NETGAMEMODE_COOP ? 2 : g_NetMenuMaxPlayers;
+
+		if (netStartServer(g_NetMenuPort, maxplayers) == 0) {
+			menuPushDialog(g_NetGameMode == NETGAMEMODE_COOP
+				? &g_NetCoopJoiningDialog
+				: &g_NetJoiningDialog);
 		}
 	}
 
@@ -170,7 +177,9 @@ static const char *menutextLobbyState(struct menuitem *item)
 		return tmp;
 	}
 
-	len += snprintf(tmp + len, sizeof(tmp) - len, "%s Network Lobby\n", g_NetMode == NETMODE_SERVER ? "Host" : "Client");
+	len += snprintf(tmp + len, sizeof(tmp) - len, "%s %sNetwork Lobby\n",
+		g_NetMode == NETMODE_SERVER ? "Host" : "Client",
+		g_NetGameMode == NETGAMEMODE_COOP ? "Co-Op " : "");
 	len += snprintf(tmp + len, sizeof(tmp) - len, "Players: %d / %d\n\n", g_NetNumClients, g_NetMaxClients);
 
 	for (s32 i = 0; i < g_NetMaxClients && len < (s32)sizeof(tmp) - 1; ++i) {
@@ -240,15 +249,34 @@ static MenuItemHandlerResult menuhandlerLobbyStartMatch(s32 operation, struct me
 		return g_NetMode != NETMODE_SERVER;
 	}
 
+	if (operation == MENUOP_CHECKDISABLED
+			&& g_NetGameMode == NETGAMEMODE_COOP
+			&& g_NetNumClients != 2) {
+		return true;
+	}
+
 	if (operation == MENUOP_SET && g_NetMode == NETMODE_SERVER) {
 		netBroadcastLobbyState();
-		mpsetupCopyAllFromPak();
-		mpsetupLoadCurrentFile();
-		menuhandlerMainMenuCombatSimulator(MENUOP_SET, NULL, NULL);
-		menuhandlerMpAdvancedSetup(MENUOP_SET, NULL, NULL);
+
+		if (g_NetGameMode == NETGAMEMODE_COOP) {
+			g_Vars.numaibuddies = 0;
+			menuhandlerMainMenuCooperative(MENUOP_SET, NULL, NULL);
+		} else {
+			mpsetupCopyAllFromPak();
+			mpsetupLoadCurrentFile();
+			menuhandlerMainMenuCombatSimulator(MENUOP_SET, NULL, NULL);
+			menuhandlerMpAdvancedSetup(MENUOP_SET, NULL, NULL);
+		}
 	}
 
 	return 0;
+}
+
+static char *menutextLobbyStartMatch(struct menuitem *item)
+{
+	return g_NetGameMode == NETGAMEMODE_COOP
+		? "Choose Mission / Start Co-Op\n"
+		: "Configure / Start Match\n";
 }
 
 struct menuitem g_NetJoiningMenuItems[] = {
@@ -271,8 +299,8 @@ struct menuitem g_NetJoiningMenuItems[] = {
 	{
 		MENUITEMTYPE_SELECTABLE,
 		0,
-		MENUITEMFLAG_LITERAL_TEXT,
-		(uintptr_t)"Configure / Start Match\n",
+		0,
+		(uintptr_t)&menutextLobbyStartMatch,
 		0,
 		menuhandlerLobbyStartMatch,
 	},
@@ -298,6 +326,15 @@ struct menuitem g_NetJoiningMenuItems[] = {
 struct menudialogdef g_NetJoiningDialog = {
 	MENUDIALOGTYPE_SUCCESS,
 	(uintptr_t)"Network Lobby",
+	g_NetJoiningMenuItems,
+	NULL,
+	MENUDIALOGFLAG_LITERAL_TEXT | MENUDIALOGFLAG_IGNOREBACK | MENUDIALOGFLAG_STARTSELECTS,
+	NULL,
+};
+
+struct menudialogdef g_NetCoopJoiningDialog = {
+	MENUDIALOGTYPE_SUCCESS,
+	(uintptr_t)"Network Co-Op Lobby",
 	g_NetJoiningMenuItems,
 	NULL,
 	MENUDIALOGFLAG_LITERAL_TEXT | MENUDIALOGFLAG_IGNOREBACK | MENUDIALOGFLAG_STARTSELECTS,
@@ -375,7 +412,9 @@ MenuItemHandlerResult menuhandlerJoinStart(s32 operation, struct menuitem *item,
 {
 	if (operation == MENUOP_SET) {
 		if (netStartClient(g_NetJoinAddr) == 0) {
-			menuPushDialog(&g_NetJoiningDialog);
+			menuPushDialog(g_NetGameMode == NETGAMEMODE_COOP
+				? &g_NetCoopJoiningDialog
+				: &g_NetJoiningDialog);
 		}
 	}
 
@@ -509,11 +548,39 @@ struct menuitem g_NetMenuItems[] = {
 	{ MENUITEMTYPE_END },
 };
 
+static MenuDialogHandlerResult menudialogNetMenu(s32 operation, struct menudialogdef *dialogdef, union handlerdata *data)
+{
+	if (operation == MENUOP_OPEN) {
+		g_NetGameMode = NETGAMEMODE_COMBAT;
+	}
+
+	return false;
+}
+
 struct menudialogdef g_NetMenuDialog = {
 	MENUDIALOGTYPE_DEFAULT,
 	(uintptr_t)"Network Game",
 	g_NetMenuItems,
+	menudialogNetMenu,
+	MENUDIALOGFLAG_MPLOCKABLE | MENUDIALOGFLAG_LITERAL_TEXT | MENUDIALOGFLAG_STARTSELECTS,
 	NULL,
+};
+
+static MenuDialogHandlerResult menudialogNetCoopMenu(s32 operation, struct menudialogdef *dialogdef, union handlerdata *data)
+{
+	if (operation == MENUOP_OPEN) {
+		g_NetGameMode = NETGAMEMODE_COOP;
+		g_NetMenuMaxPlayers = 2;
+	}
+
+	return false;
+}
+
+struct menudialogdef g_NetCoopMenuDialog = {
+	MENUDIALOGTYPE_DEFAULT,
+	(uintptr_t)"Network Co-Operative",
+	g_NetMenuItems,
+	menudialogNetCoopMenu,
 	MENUDIALOGFLAG_MPLOCKABLE | MENUDIALOGFLAG_LITERAL_TEXT | MENUDIALOGFLAG_STARTSELECTS,
 	NULL,
 };

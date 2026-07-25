@@ -14583,6 +14583,15 @@ bool objDrop(struct prop *prop, bool lazy)
 	Mtxf spf0;
 	struct coord spe4;
 	RoomNum rooms[8];
+#ifndef PLATFORM_N64
+	const bool netcoopguarddrop = g_NetMode == NETMODE_SERVER
+			&& g_NetGameMode == NETGAMEMODE_COOP
+			&& parent
+			&& parent->type == PROPTYPE_CHR
+			&& parent->chr
+			&& parent->chr->aibot == NULL
+			&& prop->type == PROPTYPE_WEAPON;
+#endif
 
 	if ((obj->hidden & OBJHFLAG_EMBEDDED) && obj->embedment->projectile) {
 		struct projectile *projectile2 = obj->embedment->projectile;
@@ -14786,6 +14795,28 @@ bool objDrop(struct prop *prop, bool lazy)
 				propSetDangerous(prop);
 			}
 		}
+
+#ifndef PLATFORM_N64
+		if (netcoopguarddrop) {
+			/*
+			 * Held setup props can already have the same initial sync ID on
+			 * both machines. Give the detached world drop a fresh identity so
+			 * it cannot resolve to the client's still-attached presentation
+			 * weapon while the reliable spawn is being processed.
+			 */
+			prop->syncid = ++g_NetNextSyncId;
+
+			sysLogPrintf(
+					LOG_NOTE,
+					"NETCOOP: spawning guard weapon drop syncid=%u weapon=%d",
+					prop->syncid,
+					prop->weapon ? prop->weapon->weaponnum : -1
+			);
+
+			netmsgSvcPropSpawnWrite(&g_NetMsgRel, prop);
+			netmsgSvcPropMoveWrite(&g_NetMsgRel, prop, NULL);
+		}
+#endif
 
 		return true;
 	}

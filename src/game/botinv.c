@@ -17,6 +17,10 @@
 #include "lib/rng.h"
 #include "data.h"
 #include "types.h"
+#ifndef PLATFORM_N64
+#include "net/net.h"
+#include "net/netmsg.h"
+#endif
 
 struct aibotweaponpreference g_AibotWeaponPreferences[] = {
 	//                             haspriammogoal
@@ -1155,14 +1159,31 @@ void botinvDrop(struct chrdata *chr, s32 weaponnum, u8 dropall)
 				s32 modelnum = playermgrGetModelOfWeapon(item->type_weap.weapon1);
 
 				if (modelnum > 0) {
-					struct prop *prop = weaponCreateForChr(chr, modelnum, item->type_weap.weapon1, OBJFLAG_WEAPON_AICANNOTUSE, NULL, NULL);
+#ifndef PLATFORM_N64
+					/*
+					 * These are new world props, not the held presentation
+					 * props. Creating them on a client produces an unrelated
+					 * syncid-zero gun which can never receive a server pickup.
+					 */
+					if (g_NetMode != NETMODE_CLIENT)
+#endif
+					{
+						struct prop *prop = weaponCreateForChr(chr, modelnum, item->type_weap.weapon1, OBJFLAG_WEAPON_AICANNOTUSE, NULL, NULL);
 
-					if (prop) {
-						objSetDropped(prop, DROPTYPE_DEFAULT);
-						objDrop(prop, true);
+						if (prop) {
+							objSetDropped(prop, DROPTYPE_DEFAULT);
+							objDrop(prop, true);
 
-						if (item->type_weap.weapon1 == WEAPON_BRIEFCASE2) {
-							scenarioHandleDroppedToken(chr, prop);
+							if (item->type_weap.weapon1 == WEAPON_BRIEFCASE2) {
+								scenarioHandleDroppedToken(chr, prop);
+							}
+
+#ifndef PLATFORM_N64
+							if (g_NetMode == NETMODE_SERVER) {
+								netmsgSvcPropSpawnWrite(&g_NetMsgRel, prop);
+								netmsgSvcPropMoveWrite(&g_NetMsgRel, prop, NULL);
+							}
+#endif
 						}
 					}
 				}

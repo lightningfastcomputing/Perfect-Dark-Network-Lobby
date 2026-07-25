@@ -539,7 +539,7 @@ bool chr0f01f378(struct model *model, struct coord *arg1, struct coord *arg2, f3
 
 #ifndef PLATFORM_N64
 /*
- * Network clients receive authoritative Sim transforms from the host.
+ * Network clients receive authoritative character transforms from the host.
  * Do not run the normal character movement and collision callback again
  * for those replicas, because their local fallspeed/ground state is not
  * authoritative and can pull them back toward ledges or lower floors.
@@ -547,7 +547,10 @@ bool chr0f01f378(struct model *model, struct coord *arg1, struct coord *arg2, f3
  * model animation expects Y relative to manground, while prop->pos is
  * absolute world position.
  */
-if (g_NetMode == NETMODE_CLIENT && chr->aibot) {
+if (g_NetMode == NETMODE_CLIENT
+		&& (chr->aibot
+			|| (g_NetGameMode == NETGAMEMODE_COOP
+				&& prop->type == PROPTYPE_CHR))) {
 arg2->x = prop->pos.x;
 arg2->y = prop->pos.y - chr->manground;
 arg2->z = prop->pos.z;
@@ -2403,11 +2406,28 @@ s32 chrTick(struct prop *prop)
 	f32 sp178;
 	struct hoverbikeobj *bike;
 	u8 stack[0x28];
+	bool netcoopreplica = false;
 
 	if (prop->flags & PROPFLAG_NOTYETTICKED) {
 		fulltick = true;
 		prop->flags &= ~PROPFLAG_NOTYETTICKED;
 	}
+
+#ifndef PLATFORM_N64
+	netcoopreplica = g_NetMode == NETMODE_CLIENT
+			&& g_NetGameMode == NETGAMEMODE_COOP
+			&& prop->type == PROPTYPE_CHR
+			&& chr->aibot == NULL;
+
+	/*
+	 * The host supplies the replica's animation frame and visual root every
+	 * network update. Advancing it locally would move the guard away from the
+	 * authoritative pose before this frame is rendered or hit-tested.
+	 */
+	if (netcoopreplica) {
+		lvupdate240 = 0;
+	}
+#endif
 
 	if (fulltick) {
 #if VERSION >= VERSION_NTSC_1_0
@@ -2449,7 +2469,10 @@ s32 chrTick(struct prop *prop)
 		}
 
 		chrUpdateCloak(chr);
-		chrTickPoisoned(chr);
+
+		if (!netcoopreplica) {
+			chrTickPoisoned(chr);
+		}
 
 		if ((chr->chrflags & CHRCFLAG_HIDDEN) == 0 || (chr->chrflags & CHRCFLAG_NEVERSLEEP)) {
 			if (var8006296c) {

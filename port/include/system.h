@@ -30,6 +30,7 @@ f32 sysGetSeconds(void);
 void sysFatalError(const char *fmt, ...) __attribute__((noreturn));
 
 s32 sysLogIsOpen(void);
+void sysLogOpen(const char *fname);
 void sysLogPrintf(s32 level, const char *fmt, ...);
 
 void sysGetExecutablePath(char *outPath, const u32 outLen);

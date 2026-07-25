@@ -3395,6 +3395,23 @@ void chrBeginDeath(struct chrdata *chr, struct coord *dir, f32 relangle, s32 hit
 
 	// Drop items
 	if (race == RACE_HUMAN || race == RACE_SKEDAR) {
+#ifndef PLATFORM_N64
+		/*
+		 * The co-op host converts these attached presentation props into
+		 * authoritative world drops and broadcasts them. A client-created
+		 * copy has no matching network identity and blocks the later pickup
+		 * grant, so leave the held copies attached until SVC_CHR_STATE removes
+		 * them when the host reports the character dead.
+		 */
+		const bool netcoopreplica = g_NetMode == NETMODE_CLIENT
+				&& g_NetGameMode == NETGAMEMODE_COOP
+				&& chr->prop
+				&& chr->prop->type == PROPTYPE_CHR
+				&& chr->aibot == NULL;
+
+		if (!netcoopreplica)
+#endif
+		{
 		if (chr->weapons_held[0] && (chr->weapons_held[0]->obj->flags & OBJFLAG_AIUNDROPPABLE) == 0) {
 			objSetDropped(chr->weapons_held[0], DROPTYPE_DEFAULT);
 			chr->hidden |= CHRHFLAG_DROPPINGITEM;
@@ -3406,6 +3423,7 @@ void chrBeginDeath(struct chrdata *chr, struct coord *dir, f32 relangle, s32 hit
 		}
 
 		chrDropConcealedItems(chr);
+		}
 	}
 }
 
@@ -4108,9 +4126,11 @@ void chrDamageByMisc(struct chrdata *chr, f32 damage, struct coord *vector, stru
 {
 #ifndef PLATFORM_N64
 	if (g_NetMode == NETMODE_CLIENT) {
-		// don't do anything if we're not the authority
+		netmsgClcChrDamageWrite(&g_NetMsgRel, chr, damage, vector, gset, prop,
+				HITPART_GENERAL, false, NULL, -1, NULL, false, NULL);
 		return;
 	}
+
 #endif
 	chrDamage(chr, damage, vector, gset, prop, HITPART_GENERAL,
 			false,     // damageshield
@@ -4127,9 +4147,11 @@ void chrDamageByLaser(struct chrdata *chr, f32 damage, struct coord *vector, str
 {
 #ifndef PLATFORM_N64
 	if (g_NetMode == NETMODE_CLIENT) {
-		// don't do anything if we're not the authority
+		netmsgClcChrDamageWrite(&g_NetMsgRel, chr, damage, vector, gset, prop,
+				HITPART_GENERAL, true, chr->prop, -1, NULL, false, NULL);
 		return;
 	}
+
 #endif
 	chrDamage(chr, damage, vector, gset, prop, HITPART_GENERAL,
 			true,      // damageshield
@@ -4146,9 +4168,11 @@ void func0f0341dc(struct chrdata *chr, f32 damage, struct coord *vector, struct 
 {
 #ifndef PLATFORM_N64
 	if (g_NetMode == NETMODE_CLIENT) {
-		// don't do anything if we're not the authority
+		netmsgClcChrDamageWrite(&g_NetMsgRel, chr, damage, vector, gset, prop,
+				hitpart, true, prop2, side, arg10, false, NULL);
 		return;
 	}
+
 #endif
 	chrDamage(chr, damage, vector, gset, prop, hitpart,
 			true,      // damageshield
@@ -4173,9 +4197,11 @@ void func0f034248(struct chrdata *chr, f32 damage, struct coord *vector, struct 
 
 #ifndef PLATFORM_N64
 	if (g_NetMode == NETMODE_CLIENT) {
-		// don't do anything if we're not the authority
+		netmsgClcChrDamageWrite(&g_NetMsgRel, chr, damage, vector, gset, prop,
+				HITPART_GENERAL, true, chr->prop, side, NULL, false, NULL);
 		return;
 	}
+
 #endif
 
 	if (chrGetShield(chr) >= 0 && chr->model) {
@@ -4204,9 +4230,11 @@ void chrDamageByImpact(struct chrdata *chr, f32 damage, struct coord *vector, st
 
 #ifndef PLATFORM_N64
 	if (g_NetMode == NETMODE_CLIENT) {
-		// don't do anything if we're not the authority
+		netmsgClcChrDamageWrite(&g_NetMsgRel, chr, damage, vector, gset, prop,
+				hitpart, true, chr->prop, side, NULL, false, NULL);
 		return;
 	}
+
 #endif
 
 	if (chrGetShield(chr) >= 0 && chr->model) {
@@ -4228,9 +4256,11 @@ void chrDamageByExplosion(struct chrdata *chr, f32 damage, struct coord *vector,
 {
 #ifndef PLATFORM_N64
 	if (g_NetMode == NETMODE_CLIENT) {
-		// don't do anything if we're not the authority
+		netmsgClcChrDamageWrite(&g_NetMsgRel, chr, damage, vector, NULL, prop,
+				HITPART_GENERAL, true, chr->prop, -1, NULL, true, explosionpos);
 		return;
 	}
+
 #endif
 	chrDamage(chr, damage, vector, NULL, prop, HITPART_GENERAL,
 			true,      // damageshield
@@ -10537,6 +10567,9 @@ netmsgSvcPropMoveWrite(&g_NetMsgRel, projectileobj->base.prop, NULL);
 								func0f065e74(&gunpos, gunrooms, &hitpos, hitrooms);
 							}
 
+#ifndef PLATFORM_N64
+							if (g_NetMode != NETMODE_CLIENT)
+#endif
 							explosionCreateSimple(NULL, &hitpos, hitrooms, EXPLOSIONTYPE_PHOENIX, playernum);
 						}
 					}
@@ -13390,6 +13423,22 @@ void chraTick(struct chrdata *chr)
 		func0f02e9a0(chr, 0);
 		chr->sleep = 0;
 	}
+
+#ifndef PLATFORM_N64
+	/*
+	 * Campaign guards are simulated only by the co-op host. Let a new replica
+	 * complete the ACT_INIT setup above, then leave AI, attacks and movement to
+	 * the host. chrTick still performs its model/presentation work using the
+	 * authoritative SVC_CHR_STATE snapshots.
+	 */
+	if (g_NetMode == NETMODE_CLIENT
+			&& g_NetGameMode == NETGAMEMODE_COOP
+			&& chr->prop
+			&& chr->prop->type == PROPTYPE_CHR
+			&& chr->aibot == NULL) {
+		return;
+	}
+#endif
 
 	if (race == RACE_DRCAROLL) {
 		g_DrCarollDyingTimer += g_Vars.lvupdate60;

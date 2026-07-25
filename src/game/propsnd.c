@@ -16,6 +16,9 @@
 #include "lib/lib_317f0.h"
 #include "data.h"
 #include "types.h"
+#ifndef PLATFORM_N64
+#include "net/net.h"
+#endif
 
 struct pschannel *g_PsChannels = NULL;
 
@@ -1171,8 +1174,9 @@ s32 psCalculateVol(struct coord *pos, f32 dist1, f32 dist2, f32 dist3, RoomNum *
 	}
 
 	// Figure out which player is closest and store their distance in playerdist
-	for (i = 0; i < LOCALPLAYERCOUNT(); i++) {
-		struct player *player = g_Vars.players[i];
+#ifndef PLATFORM_N64
+	if (g_NetMode && g_NetLocalClient && g_NetLocalClient->player) {
+		struct player *player = g_NetLocalClient->player;
 		s32 camroom;
 
 		if (sp6c.unk02 == 0) {
@@ -1182,6 +1186,21 @@ s32 psCalculateVol(struct coord *pos, f32 dist1, f32 dist2, f32 dist3, RoomNum *
 		}
 
 		func0f0056f4(camroom, &player->cam_pos, roomnum, pos, 0, &playerdist, s0);
+	} else
+#endif
+	{
+		for (i = 0; i < LOCALPLAYERCOUNT(); i++) {
+			struct player *player = g_Vars.players[i];
+			s32 camroom;
+
+			if (sp6c.unk02 == 0) {
+				camroom = player->cam_room;
+			} else {
+				camroom = -1;
+			}
+
+			func0f0056f4(camroom, &player->cam_pos, roomnum, pos, 0, &playerdist, s0);
+		}
 	}
 
 	if (playerdistptr != NULL) {
@@ -1287,7 +1306,9 @@ s32 psCalculatePan2(struct coord *pos, s32 arg1, f32 arg2, struct pschannel *cha
 #ifdef PLATFORM_N64
 		struct player *player = g_Vars.currentplayer;
 #else
-		struct player *player = g_Vars.players[0] ? g_Vars.players[0] : g_Vars.currentplayer;
+		struct player *player = g_NetMode && g_NetLocalClient && g_NetLocalClient->player
+				? g_NetLocalClient->player
+				: (g_Vars.players[0] ? g_Vars.players[0] : g_Vars.currentplayer);
 #endif
 		struct coord *campos = &player->cam_pos;
 		f32 sp3c;

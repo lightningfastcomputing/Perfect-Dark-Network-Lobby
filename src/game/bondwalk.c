@@ -77,8 +77,8 @@ static void bwalkUpdateRemote(void)
 	} else if (!moveticks) {
 		// duplicate move, reposition to correct coords
 		delta.x = inmove->pos.x - pl->prop->pos.x;
-		delta.x = inmove->pos.y - pl->prop->pos.y;
-		delta.x = inmove->pos.z - pl->prop->pos.z;
+		delta.y = inmove->pos.y - pl->prop->pos.y;
+		delta.z = inmove->pos.z - pl->prop->pos.z;
 		bwalk0f0c63bc(&delta, pl->swaytarget == 0.0f, cdtype);
 	} else if (pl->client->lerpticks <= moveticks) {
 		// lerp towards the correct position

@@ -23,6 +23,7 @@
 #define SVC_PROP_DOOR     0x35 // door state changed
 #define SVC_PROP_LIFT     0x36 // lift state changed
 #define SVC_BOT_STATE     0x40 // authoritative simulant transform
+#define SVC_CHR_STATE     0x41 // authoritative campaign character transform
 #define SVC_CHR_DAMAGE    0x42 // chr was damaged
 #define SVC_CHR_DISARM    0x43 // chr's weapons were dropped
 #define SVC_EFFECT_BEAM   0x44 // cosmetic weapon beam
@@ -37,6 +38,7 @@
 #define CLC_MOVE     0x04 // player input
 #define CLC_SETTINGS 0x05 // player settings changed
 #define CLC_LOBBY_READY 0x06 // player toggled lobby ready state
+#define CLC_CHR_DAMAGE 0x07 // network co-op campaign character damage request
 
 u32 netmsgClcAuthWrite(struct netbuf *dst);
 u32 netmsgClcAuthRead(struct netbuf *src, struct netclient *srccl);
@@ -48,6 +50,8 @@ u32 netmsgClcSettingsWrite(struct netbuf *dst);
 u32 netmsgClcSettingsRead(struct netbuf *src, struct netclient *srccl);
 u32 netmsgClcLobbyReadyWrite(struct netbuf *dst, bool ready);
 u32 netmsgClcLobbyReadyRead(struct netbuf *src, struct netclient *srccl);
+u32 netmsgClcChrDamageWrite(struct netbuf *dst, struct chrdata *chr, f32 damage, struct coord *vector, struct gset *gset, struct prop *aprop, s32 hitpart, bool damageshield, struct prop *prop2, s32 side, s16 *arg11, bool explosion, struct coord *explosionpos);
+u32 netmsgClcChrDamageRead(struct netbuf *src, struct netclient *srccl);
 
 u32 netmsgSvcAuthWrite(struct netbuf *dst, struct netclient *authcl);
 u32 netmsgSvcAuthRead(struct netbuf *src, struct netclient *srccl);
@@ -86,6 +90,8 @@ u32 netmsgSvcPropLiftRead(struct netbuf *src, struct netclient *srccl);
 u32 netmsgSvcBotStateWrite(struct netbuf *dst, struct chrdata *chr, u8 botnum);
 u32 netmsgSvcBotStateRead(struct netbuf *src, struct netclient *srccl);
 bool netmsgGetBotVisualPosition(struct chrdata *chr, struct coord *out);
+u32 netmsgSvcChrStateWrite(struct netbuf *dst, struct chrdata *chr);
+u32 netmsgSvcChrStateRead(struct netbuf *src, struct netclient *srccl);
 u32 netmsgSvcChrDamageWrite(struct netbuf *dst, struct chrdata *chr, f32 damage, struct coord *vector, struct gset *gset, struct prop *aprop, s32 hitpart, bool damageshield, struct prop *prop2, s32 side, s16 *arg11, bool explosion, struct coord *explosionpos);
 u32 netmsgSvcChrDamageRead(struct netbuf *src, struct netclient *srccl);
 u32 netmsgSvcChrDisarmWrite(struct netbuf *dst, struct chrdata *chr, struct prop *attacker, u8 weaponnum, f32 wpndamage, struct coord *wpnpos);

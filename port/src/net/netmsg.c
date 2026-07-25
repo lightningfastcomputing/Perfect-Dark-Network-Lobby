@@ -18,11 +18,14 @@
 #include "game/bondgun.h"
 #include "game/game_0b0fd0.h"
 #include "game/inv.h"
+#include "game/lv.h"
 #include "game/menu.h"
+#include "game/pdmode.h"
 #include "game/setup.h"
 #include "game/setuputils.h"
 #include "game/modelmgr.h"
 #include "game/propsnd.h"
+#include "game/title.h"
 #include "system.h"
 #include "romdata.h"
 #include "fs.h"
@@ -132,54 +135,76 @@ static inline u32 netbufReadPlayerMove(struct netbuf *buf, struct netplayermove 
 }
 
 struct netbotvisualstate {
-struct chrdata *chr;
-struct coord pos;
-bool valid;
+	struct chrdata *chr;
+	struct coord pos;
+	bool valid;
 };
 
-static struct netbotvisualstate g_NetBotVisualStates[MAX_BOTS];
+#define NET_MAX_CHR_VISUAL_STATES 256
+
+static struct netbotvisualstate
+		g_NetBotVisualStates[MAX_BOTS + NET_MAX_CHR_VISUAL_STATES];
 
 static void netmsgSetBotVisualPosition(
-u8 botnum,
-struct chrdata *chr,
-const struct coord *visualpos)
+		u8 botnum,
+		struct chrdata *chr,
+		const struct coord *visualpos)
 {
-if (botnum >= MAX_BOTS || !chr || !visualpos) {
-return;
+	if (botnum >= MAX_BOTS || !chr || !visualpos) {
+		return;
+	}
+
+	g_NetBotVisualStates[botnum].chr = chr;
+	g_NetBotVisualStates[botnum].pos = *visualpos;
+	g_NetBotVisualStates[botnum].valid = true;
 }
 
-g_NetBotVisualStates[botnum].chr = chr;
-g_NetBotVisualStates[botnum].pos = *visualpos;
-g_NetBotVisualStates[botnum].valid = true;
-}
-
-static void netmsgResetBotVisualState(u8 botnum)
+static void netmsgSetChrVisualPosition(
+		struct chrdata *chr,
+		const struct coord *visualpos)
 {
-if (botnum < MAX_BOTS) {
-g_NetBotVisualStates[botnum].chr = NULL;
-g_NetBotVisualStates[botnum].pos.x = 0.0f;
-g_NetBotVisualStates[botnum].pos.y = 0.0f;
-g_NetBotVisualStates[botnum].pos.z = 0.0f;
-g_NetBotVisualStates[botnum].valid = false;
-}
+	if (!chr || !visualpos) {
+		return;
+	}
+
+	struct netbotvisualstate *freeentry = NULL;
+
+	for (s32 i = MAX_BOTS; i < ARRAYCOUNT(g_NetBotVisualStates); ++i) {
+		struct netbotvisualstate *state = &g_NetBotVisualStates[i];
+
+		if (state->valid && state->chr == chr) {
+			state->pos = *visualpos;
+			return;
+		}
+
+		if (!state->valid && freeentry == NULL) {
+			freeentry = state;
+		}
+	}
+
+	if (freeentry) {
+		freeentry->chr = chr;
+		freeentry->pos = *visualpos;
+		freeentry->valid = true;
+	}
 }
 
 bool netmsgGetBotVisualPosition(struct chrdata *chr, struct coord *out)
 {
-if (g_NetMode != NETMODE_CLIENT || !chr || !out) {
-return false;
-}
+	if (g_NetMode != NETMODE_CLIENT || !chr || !out) {
+		return false;
+	}
 
-for (u8 i = 0; i < MAX_BOTS; i++) {
-struct netbotvisualstate *state = &g_NetBotVisualStates[i];
+	for (s32 i = 0; i < ARRAYCOUNT(g_NetBotVisualStates); i++) {
+		struct netbotvisualstate *state = &g_NetBotVisualStates[i];
 
-if (state->valid && state->chr == chr) {
-*out = state->pos;
-return true;
-}
-}
+		if (state->valid && state->chr == chr) {
+			*out = state->pos;
+			return true;
+		}
+	}
 
-return false;
+	return false;
 }
 static inline u32 netbufWritePropPtr(struct netbuf *buf, const struct prop *prop)
 {
@@ -586,7 +611,7 @@ u32 netmsgSvcStageStartWrite(struct netbuf *dst)
 	}
 
 	// game settings
-	netbufWriteU8(dst, 0); // 0 for combat sim TODO: coop/anti
+	netbufWriteU8(dst, g_NetGameMode);
 	netbufWriteU8(dst, g_MpSetup.scenario);
 	netbufWriteU8(dst, g_MpSetup.scorelimit);
 	netbufWriteU8(dst, g_MpSetup.timelimit);
@@ -611,6 +636,13 @@ u32 netmsgSvcStageStartWrite(struct netbuf *dst)
 		netbufWriteU8(dst, bot->type);
 		netbufWriteU8(dst, bot->difficulty);
 		netbufWriteStr(dst, bot->base.name);
+	}
+
+	if (g_NetGameMode == NETGAMEMODE_COOP) {
+		netbufWriteU8(dst, g_MissionConfig.stageindex);
+		netbufWriteU8(dst, g_MissionConfig.difficulty);
+		netbufWriteU8(dst, g_Vars.coopradaron ? 1 : 0);
+		netbufWriteU8(dst, g_Vars.coopfriendlyfire ? 1 : 0);
 	}
 
 	// who the fuck is in the game
@@ -659,7 +691,14 @@ u32 netmsgSvcStageStartRead(struct netbuf *src, struct netclient *srccl)
 		return src->error;
 	}
 
-	const u8 mode = netbufReadU8(src); // TODO: coop, anti
+	const u8 mode = netbufReadU8(src);
+
+	if (src->error || mode > NETGAMEMODE_COOP) {
+		sysLogPrintf(LOG_WARNING, "NET: malformed game mode in SVC_STAGE (%u)", mode);
+		return 1;
+	}
+
+	g_NetGameMode = mode;
 	g_MpSetup.stagenum = stagenum;
 	g_MpSetup.scenario = netbufReadU8(src);
 	g_MpSetup.scorelimit = netbufReadU8(src);
@@ -708,6 +747,24 @@ u32 netmsgSvcStageStartRead(struct netbuf *src, struct netclient *srccl)
 	if (src->error) {
 		sysLogPrintf(LOG_WARNING, "NET: malformed SVC_STAGE from server");
 		return 1;
+	}
+
+	if (mode == NETGAMEMODE_COOP) {
+		g_MissionConfig.iscoop = true;
+		g_MissionConfig.isanti = false;
+		g_MissionConfig.pdmode = false;
+		g_MissionConfig.stagenum = stagenum;
+		g_MissionConfig.stageindex = netbufReadU8(src);
+		g_MissionConfig.difficulty = netbufReadU8(src);
+		g_Vars.coopradaron = netbufReadU8(src) != 0;
+		g_Vars.coopfriendlyfire = netbufReadU8(src) != 0;
+
+		if (src->error
+				|| g_MissionConfig.stageindex > SOLOSTAGEINDEX_DUEL
+				|| g_MissionConfig.difficulty > DIFF_PA) {
+			sysLogPrintf(LOG_WARNING, "NET: malformed co-op settings in SVC_STAGE");
+			return 1;
+		}
 	}
 
 	// read players
@@ -772,9 +829,38 @@ u32 netmsgSvcStageStartRead(struct netbuf *src, struct netclient *srccl)
 
 	g_NetNumClients = numplayers;
 
-	sysLogPrintf(LOG_NOTE, "NET: SVC_STAGE from server: going to stage 0x%02x with %u players", g_MpSetup.stagenum, numplayers);
+	sysLogPrintf(LOG_NOTE, "NET: SVC_STAGE from server: going to stage 0x%02x in mode %u with %u players",
+		g_MpSetup.stagenum, mode, numplayers);
 
-	mpStartMatch();
+	if (mode == NETGAMEMODE_COOP) {
+		if (numplayers != 2) {
+			sysLogPrintf(LOG_WARNING, "NET: co-op SVC_STAGE requires exactly 2 players");
+			return 1;
+		}
+
+		/*
+		 * Netplay renders the local pawn in player slot 0 on every machine.
+		 * On a client this means the semantic campaign roles are reversed:
+		 * the remote server pawn is Joanna and the local pawn is the co-op
+		 * character. This keeps CHR_BOND/CHR_COOP correct for mission scripts.
+		 */
+		g_Vars.bondplayernum = 1;
+		g_Vars.coopplayernum = 0;
+		g_Vars.antiplayernum = -1;
+		g_Vars.numaibuddies = 0;
+		g_Vars.mplayerisrunning = false;
+		g_Vars.normmplayerisrunning = false;
+		g_MpSetup.chrslots = 0x03;
+
+		setNumPlayers(2);
+		lvSetDifficulty(g_MissionConfig.difficulty);
+		titleSetNextStage(stagenum);
+		titleSetNextMode(TITLEMODE_SKIP);
+		mainChangeToStage(stagenum);
+	} else {
+		mpStartMatch();
+	}
+
 	menuStop();
 
 	return 0;
@@ -834,7 +920,8 @@ u32 netmsgSvcPlayerMoveWrite(struct netbuf *dst, struct netclient *movecl)
 	netbufWriteU32(dst, movecl->inmove[0].tick);
 	netbufWritePlayerMove(dst, &movecl->outmove[0]);
 	if (movecl->outmove[0].ucmd & UCMD_FL_FORCEMASK) {
-		netbufWriteRooms(dst, movecl->player->prop->rooms, ARRAYCOUNT(movecl->player->prop->rooms));
+		netbufWriteRooms(dst, movecl->player->prop->rooms,
+				ARRAYCOUNT(movecl->player->prop->rooms));
 	}
 
 	return dst->error;
@@ -869,7 +956,9 @@ u32 netmsgSvcPlayerMoveRead(struct netbuf *src, struct netclient *srccl)
 	if (movecl == g_NetLocalClient && (newmove.ucmd & UCMD_FL_FORCEMASK)) {
 		// server wants to teleport us
 		if (movecl->player && movecl->player->prop) {
-			chrSetPos(movecl->player->prop->chr, &newmove.pos, newrooms, newmove.angles[0], (newmove.ucmd & UCMD_FL_FORCEGROUND) != 0);
+			chrSetPos(movecl->player->prop->chr, &newmove.pos, newrooms,
+					newmove.angles[0],
+					(newmove.ucmd & UCMD_FL_FORCEGROUND) != 0);
 		}
 	}
 
@@ -945,19 +1034,43 @@ u32 netmsgSvcPlayerStatsRead(struct netbuf *src, struct netclient *srccl)
 	struct coord newshotspeed; netbufReadCoord(src, &newshotspeed);
 	const s16 deathshooter = netbufReadS16(src);
 	const bool handused[2] = { (flags & (1 << 2)) != 0, (flags & (1 << 3)) != 0 };
+	s16 handammo[2][2] = { 0 };
+	s16 ammoheld[ARRAYCOUNT(g_Vars.currentplayer->ammoheldarr)] = { 0 };
+
+	for (s32 i = 0; i < 2; ++i) {
+		if (handused[i]) {
+			handammo[i][0] = netbufReadS16(src);
+			handammo[i][1] = netbufReadS16(src);
+		}
+	}
+
+	const u32 ammomask = netbufReadU32(src);
+	for (s32 i = 0; i < ARRAYCOUNT(ammoheld); ++i) {
+		if (i >= 32 || (ammomask & (1u << i))) {
+			ammoheld[i] = netbufReadS16(src);
+		}
+	}
 
 	if (src->error) {
 		return src->error;
 	}
 
-	struct netclient *actcl = g_NetClients + clid;
-	if (actcl->state < CLSTATE_GAME) {
-		return 1;
+	/*
+	 * Reliable state snapshots can arrive after SVC_STAGE_START but before
+	 * the new stage has attached its player objects. Always consume the
+	 * complete variable-length message first so its ammo payload cannot be
+	 * mistaken for another message ID.
+	 */
+	if (clid >= g_NetMaxClients) {
+		sysLogPrintf(LOG_WARNING, "NET: invalid SVC_PLAYER_STATS client %u", clid);
+		return 0;
 	}
 
+	struct netclient *actcl = g_NetClients + clid;
 	struct player *pl = actcl->player;
-	if (!pl || !pl->prop) {
-		return src->error;
+
+	if (actcl->state < CLSTATE_GAME || !pl || !pl->prop) {
+		return 0;
 	}
 
 	pl->prop->chr->damage = newdamage;
@@ -967,15 +1080,14 @@ u32 netmsgSvcPlayerStatsRead(struct netbuf *src, struct netclient *srccl)
 
 	for (s32 i = 0; i < 2; ++i) {
 		if (handused[i]) {
-			pl->hands[i].loadedammo[0] = netbufReadS16(src);
-			pl->hands[i].loadedammo[1] = netbufReadS16(src);
+			pl->hands[i].loadedammo[0] = handammo[i][0];
+			pl->hands[i].loadedammo[1] = handammo[i][1];
 		}
 	}
 
-	const u32 ammomask = netbufReadU32(src);
 	for (s32 i = 0; i < ARRAYCOUNT(pl->ammoheldarr); ++i) {
 		if (i >= 32 || (ammomask & (1 << i))) {
-			pl->ammoheldarr[i] = netbufReadS16(src);
+			pl->ammoheldarr[i] = ammoheld[i];
 		} else {
 			pl->ammoheldarr[i] = 0;
 		}
@@ -1960,6 +2072,12 @@ u32 netmsgSvcBotStateWrite(struct netbuf *dst, struct chrdata *chr, u8 botnum)
 	const f32 animspeed = chr->model->anim
 	                ? chr->model->anim->playspeed
 	                : 0.0f;
+	const u8 animflip = chr->model->anim
+	                ? chr->model->anim->flip
+	                : 0;
+	const f32 animendframe = chr->model->anim
+	                ? chr->model->anim->endframe
+	                : 0.0f;
 	const s8 weaponnum = chr->aibot
 			? chr->aibot->weaponnum
 			: WEAPON_UNARMED;
@@ -1986,6 +2104,9 @@ const u8 firingmask =
 	netbufWriteS16(dst, animnum);
 	netbufWriteF32(dst, animframe);
 	netbufWriteF32(dst, animspeed);
+	netbufWriteU8(dst, animflip);
+	netbufWriteF32(dst, animendframe);
+	netbufWriteF32(dst, chr->ground);
 	netbufWriteS8(dst, weaponnum);
 	netbufWriteU8(dst, gunfunc);
 	netbufWriteU8(dst, heldmask);
@@ -2031,6 +2152,9 @@ u32 netmsgSvcBotStateRead(struct netbuf *src, struct netclient *srccl)
 	const s16 animnum = netbufReadS16(src);
 	const f32 animframe = netbufReadF32(src);
 	const f32 animspeed = netbufReadF32(src);
+	const u8 animflip = netbufReadU8(src);
+	const f32 animendframe = netbufReadF32(src);
+	const f32 hostground = netbufReadF32(src);
 	const s8 weaponnum = netbufReadS8(src);
 	const u8 gunfunc = netbufReadU8(src);
 	const u8 heldmask = netbufReadU8(src);
@@ -2110,19 +2234,62 @@ botSpawn(chr, true);
 	 * SVC_CHR_DAMAGE remains responsible for starting the local death state.
 	 */
 	if (hostdead) {
-	        for (s32 hand = 0; hand < 2; hand++) {
-	                if (chr->weapons_held[hand]) {
-	                        weaponDeleteFromChr(chr, hand);
-	                        chr->weapons_held[hand] = NULL;
-	                }
+		for (s32 hand = 0; hand < 2; hand++) {
+			if (chr->weapons_held[hand]) {
+				weaponDeleteFromChr(chr, hand);
+				chr->weapons_held[hand] = NULL;
+			}
 
-	                chrSetHandFiring(chr, hand, false);
-	                chrSetFiring(chr, hand, false);
-	        }
-		netmsgResetBotVisualState(botnum);
+			chrSetHandFiring(chr, hand, false);
+			chrSetFiring(chr, hand, false);
+		}
 
-	        chr->damage = hostdamage;
-	        return src->error;
+		/*
+		 * Death animations translate the root and may be randomly flipped.
+		 * Copy the complete host pose and ground reference; otherwise a
+		 * different local pose can finish face-down above the actual floor.
+		 */
+		chrSetPos(chr, &pos, rooms, lookangle, false);
+		chrSetRotY(chr, bodyroty);
+		chrSetLookAngle(chr, lookangle);
+		modelSetChrRotY(chr->model, modelroty);
+
+		chr->ground = hostground;
+		chr->manground = hostground;
+		chr->sumground = hostground * (PAL ? 8.4175090789795f : 9.999998f);
+
+		if ((chr->model->definition->rootnode->type & 0xff) == MODELNODETYPE_CHRINFO) {
+			union modelrwdata *rwdata = modelGetNodeRwData(
+					chr->model,
+					chr->model->definition->rootnode
+			);
+			rwdata->chrinfo.ground = hostground;
+		}
+
+		if (chr->model->anim && animnum > 0) {
+			if (chr->model->anim->animnum != animnum
+					|| chr->model->anim->flip != animflip) {
+				modelSetAnimation(
+						chr->model,
+						animnum,
+						animflip,
+						animframe,
+						animspeed,
+						0.0f
+				);
+			} else {
+				modelSetAnimFrame(chr->model, animframe);
+				chr->model->anim->playspeed = animspeed;
+			}
+
+			modelSetAnimEndFrame(chr->model, animendframe);
+		}
+
+		modelSetRootPosition(chr->model, &visualpos);
+		netmsgSetBotVisualPosition(botnum, chr, &visualpos);
+
+		chr->damage = hostdamage;
+		return src->error;
 	}
 
 	/*
@@ -2238,6 +2405,181 @@ chrSetPos(chr, &pos, rooms, lookangle, false);
 	return src->error;
 }
 
+u32 netmsgSvcChrStateWrite(struct netbuf *dst, struct chrdata *chr)
+{
+	if (!chr
+			|| chr->chrnum < 0
+			|| !chr->prop
+			|| !chr->model
+			|| chr->prop->type != PROPTYPE_CHR
+			|| chr->aibot) {
+		return dst->error;
+	}
+
+	struct coord visualpos;
+	modelGetRootPosition(chr->model, &visualpos);
+
+	const f32 bodyroty = chrGetRotY(chr);
+	const f32 lookangle = chrGetInverseTheta(chr);
+	const f32 modelroty = modelGetChrRotY(chr->model);
+	const s16 animnum = chr->model->anim
+			? chr->model->anim->animnum
+			: 0;
+	const f32 animframe = chr->model->anim
+			? chr->model->anim->framea
+			: 0.0f;
+	const f32 animspeed = chr->model->anim
+			? chr->model->anim->playspeed
+			: 0.0f;
+	const u8 animflip = chr->model->anim
+			? chr->model->anim->flip
+			: 0;
+	const f32 animendframe = chr->model->anim
+			? chr->model->anim->endframe
+			: 0.0f;
+
+	netbufWriteU8(dst, SVC_CHR_STATE);
+	netbufWriteS16(dst, chr->chrnum);
+	netbufWriteCoord(dst, &chr->prop->pos);
+	netbufWriteCoord(dst, &visualpos);
+	netbufWriteRooms(dst, chr->prop->rooms, ARRAYCOUNT(chr->prop->rooms));
+	netbufWriteF32(dst, bodyroty);
+	netbufWriteF32(dst, lookangle);
+	netbufWriteF32(dst, modelroty);
+	netbufWriteS16(dst, animnum);
+	netbufWriteF32(dst, animframe);
+	netbufWriteF32(dst, animspeed);
+	netbufWriteU8(dst, animflip);
+	netbufWriteF32(dst, animendframe);
+	netbufWriteF32(dst, chr->ground);
+	netbufWriteU8(dst, chr->actiontype);
+	netbufWriteF32(dst, chr->damage);
+
+	return dst->error;
+}
+
+u32 netmsgSvcChrStateRead(struct netbuf *src, struct netclient *srccl)
+{
+	const s16 chrnum = netbufReadS16(src);
+	struct coord pos;
+	struct coord visualpos;
+	RoomNum rooms[8] = { -1 };
+
+	netbufReadCoord(src, &pos);
+	netbufReadCoord(src, &visualpos);
+	netbufReadRooms(src, rooms, ARRAYCOUNT(rooms));
+
+	const f32 bodyroty = netbufReadF32(src);
+	const f32 lookangle = netbufReadF32(src);
+	const f32 modelroty = netbufReadF32(src);
+	const s16 animnum = netbufReadS16(src);
+	const f32 animframe = netbufReadF32(src);
+	const f32 animspeed = netbufReadF32(src);
+	const u8 animflip = netbufReadU8(src);
+	const f32 animendframe = netbufReadF32(src);
+	const f32 hostground = netbufReadF32(src);
+	const u8 hostactiontype = netbufReadU8(src);
+	const f32 hostdamage = netbufReadF32(src);
+
+	if (src->error || srccl->state < CLSTATE_GAME) {
+		return src->error;
+	}
+
+	struct chrdata *chr = chrFindByLiteralId(chrnum);
+
+	/*
+	 * A dynamically spawned guard may not exist on the client until later in
+	 * the same stage tick. Ignore this snapshot; the next one will retry.
+	 */
+	if (!chr
+			|| !chr->prop
+			|| !chr->model
+			|| chr->prop->type != PROPTYPE_CHR
+			|| chr->aibot) {
+		return 0;
+	}
+
+	const bool hostdead =
+			hostactiontype == ACT_DIE || hostactiontype == ACT_DEAD;
+
+	/*
+	 * Client guard action ticks are intentionally frozen. Without an explicit
+	 * transition, a replica can remain in ACT_DIE after the host has finished
+	 * the animation and entered ACT_DEAD. The outer chr tick then keeps
+	 * treating the settled pose as translated animation, which can render the
+	 * corpse upright and clipped through the floor.
+	 */
+	if (hostactiontype == ACT_DEAD && chr->actiontype != ACT_DEAD) {
+		chrBeginDead(chr);
+	}
+
+	if (hostdead) {
+		/*
+		 * World weapon drops arrive as separate authoritative spawned props.
+		 * Remove the client's original held presentation copies so there is
+		 * exactly one visible and collectable weapon with the host's sync ID.
+		 */
+		for (s32 hand = 0; hand < 2; ++hand) {
+			if (chr->weapons_held[hand]) {
+				weaponDeleteFromChr(chr, hand);
+				chr->weapons_held[hand] = NULL;
+			}
+
+			chrSetHandFiring(chr, hand, false);
+			chrSetFiring(chr, hand, false);
+		}
+	}
+
+	chrSetPos(chr, &pos, rooms, lookangle, false);
+	chrSetRotY(chr, bodyroty);
+	chrSetLookAngle(chr, lookangle);
+	modelSetChrRotY(chr->model, modelroty);
+
+	chr->ground = hostground;
+	chr->manground = hostground;
+	chr->sumground = hostground * (PAL ? 8.4175090789795f : 9.999998f);
+	chr->prevpos = visualpos;
+	chr->damage = hostdamage;
+
+	if ((chr->model->definition->rootnode->type & 0xff)
+			== MODELNODETYPE_CHRINFO) {
+		union modelrwdata *rwdata = modelGetNodeRwData(
+				chr->model,
+				chr->model->definition->rootnode
+		);
+		rwdata->chrinfo.ground = hostground;
+	}
+
+	if (chr->model->anim && animnum > 0) {
+		if (chr->model->anim->animnum != animnum
+				|| chr->model->anim->flip != animflip) {
+			modelSetAnimation(
+					chr->model,
+					animnum,
+					animflip,
+					animframe,
+					animspeed,
+					0.0f
+			);
+		} else {
+			modelSetAnimFrame(chr->model, animframe);
+			chr->model->anim->playspeed = animspeed;
+		}
+
+		modelSetAnimEndFrame(chr->model, animendframe);
+	}
+
+	modelSetRootPosition(chr->model, &visualpos);
+	netmsgSetChrVisualPosition(chr, &visualpos);
+
+	/*
+	 * SVC_CHR_DAMAGE owns the local action union and starts death reactions;
+	 * the state snapshot uses hostactiontype only for presentation cleanup.
+	 */
+
+	return src->error;
+}
+
 u32 netmsgSvcChrDamageWrite(struct netbuf *dst, struct chrdata *chr, f32 damage, struct coord *vector, struct gset *gset,
 		struct prop *aprop, s32 hitpart, bool damageshield, struct prop *prop2, s32 side, s16 *arg11, bool explosion, struct coord *explosionpos)
 {
@@ -2247,6 +2589,9 @@ u32 netmsgSvcChrDamageWrite(struct netbuf *dst, struct chrdata *chr, f32 damage,
 	netbufWriteU8(dst, SVC_CHR_DAMAGE);
 	netbufWriteU8(dst, flags);
 	netbufWritePropPtr(dst, chr->prop);
+	netbufWriteS16(dst, chr->prop->type == PROPTYPE_CHR && chr->aibot == NULL
+			? chr->chrnum
+			: -1);
 	netbufWriteF32(dst, damage);
 	netbufWriteCoord(dst, vector);
 	netbufWriteS16(dst, hitpart);
@@ -2256,6 +2601,11 @@ u32 netmsgSvcChrDamageWrite(struct netbuf *dst, struct chrdata *chr, f32 damage,
 	}
 	if (aprop) {
 		netbufWritePropPtr(dst, aprop);
+		netbufWriteS16(dst, aprop->type == PROPTYPE_CHR
+				&& aprop->chr
+				&& aprop->chr->aibot == NULL
+				? aprop->chr->chrnum
+				: -1);
 	}
 	if (prop2) {
 		netbufWritePropPtr(dst, prop2);
@@ -2272,10 +2622,74 @@ u32 netmsgSvcChrDamageWrite(struct netbuf *dst, struct chrdata *chr, f32 damage,
 	return dst->error;
 }
 
-u32 netmsgSvcChrDamageRead(struct netbuf *src, struct netclient *srccl)
+u32 netmsgClcChrDamageWrite(struct netbuf *dst, struct chrdata *chr, f32 damage, struct coord *vector, struct gset *gset,
+		struct prop *aprop, s32 hitpart, bool damageshield, struct prop *prop2, s32 side, s16 *arg11, bool explosion, struct coord *explosionpos)
+{
+	static u32 diagnosticcount = 0;
+
+	if (g_NetMode != NETMODE_CLIENT
+			|| g_NetGameMode != NETGAMEMODE_COOP
+			|| !g_NetLocalClient
+			|| g_NetLocalClient->state < CLSTATE_GAME
+			|| !g_Vars.currentplayer
+			|| !g_Vars.currentplayer->prop
+			|| !chr
+			|| !chr->prop
+			|| chr->prop->type != PROPTYPE_CHR
+			|| chr->aibot != NULL
+			|| aprop != g_Vars.currentplayer->prop) {
+		if (diagnosticcount++ < 64) {
+			sysLogPrintf(LOG_NOTE,
+					"NETCOOP: client damage ignored mode=%d gamemode=%d state=%u currentplayer=%p target=%p attacker=%p",
+					g_NetMode,
+					g_NetGameMode,
+					g_NetLocalClient ? g_NetLocalClient->state : 0,
+					(void *)g_Vars.currentplayer,
+					(void *)chr,
+					(void *)aprop);
+		}
+		return dst->error;
+	}
+
+	if (diagnosticcount++ < 64) {
+		sysLogPrintf(LOG_NOTE,
+				"NETCOOP: client reported hit targetchr=%d damage=%.3f",
+				chr->chrnum,
+				damage);
+	}
+
+	const u8 flags = damageshield | (explosion << 1) | ((gset != NULL) << 2) |
+		((prop2 != NULL) << 4) | ((arg11 != NULL) << 5) | ((explosionpos != NULL) << 6);
+
+	netbufWriteU8(dst, CLC_CHR_DAMAGE);
+	netbufWriteU8(dst, flags);
+	netbufWriteS16(dst, chr->chrnum);
+	netbufWriteF32(dst, damage);
+	netbufWriteCoord(dst, vector);
+	netbufWriteS16(dst, hitpart);
+	netbufWriteS16(dst, side);
+	if (gset) {
+		netbufWriteGset(dst, gset);
+	}
+	if (prop2) {
+		netbufWritePropPtr(dst, prop2);
+	}
+	if (arg11) {
+		netbufWriteS16(dst, arg11[0]);
+		netbufWriteS16(dst, arg11[1]);
+		netbufWriteS16(dst, arg11[2]);
+	}
+	if (explosionpos) {
+		netbufWriteCoord(dst, explosionpos);
+	}
+
+	return dst->error;
+}
+
+u32 netmsgClcChrDamageRead(struct netbuf *src, struct netclient *srccl)
 {
 	const u8 flags = netbufReadU8(src);
-	struct prop *chrprop = netbufReadPropPtr(src);
+	const s16 targetchrnum = netbufReadS16(src);
 	const f32 damage = netbufReadF32(src);
 	struct coord vector; netbufReadCoord(src, &vector);
 	const s16 hitpart = netbufReadS16(src);
@@ -2288,7 +2702,93 @@ u32 netmsgSvcChrDamageRead(struct netbuf *src, struct netclient *srccl)
 		gset = &gsetvalue;
 	}
 
-	struct prop *aprop = (flags & (1 << 3)) ? netbufReadPropPtr(src) : NULL;
+	struct prop *prop2 = (flags & (1 << 4)) ? netbufReadPropPtr(src) : NULL;
+
+	s16 arg11[3], *arg11ptr = NULL;
+	if (flags & (1 << 5)) {
+		arg11[0] = netbufReadS16(src);
+		arg11[1] = netbufReadS16(src);
+		arg11[2] = netbufReadS16(src);
+		arg11ptr = arg11;
+	}
+
+	struct coord explosionpos, *explosionposptr = NULL;
+	if (flags & (1 << 6)) {
+		netbufReadCoord(src, &explosionpos);
+		explosionposptr = &explosionpos;
+	}
+
+	if (src->error || (flags & ((1 << 3) | (1 << 7)))) {
+		return src->error ? src->error : 1;
+	}
+
+	struct chrdata *targetchr = targetchrnum >= 0
+			? chrFindByLiteralId(targetchrnum)
+			: NULL;
+	struct prop *clientprop = srccl->player ? srccl->player->prop : NULL;
+
+	if (g_NetGameMode != NETGAMEMODE_COOP
+			|| srccl->state < CLSTATE_GAME
+			|| !clientprop
+			|| !targetchr
+			|| !targetchr->prop
+			|| targetchr->prop->type != PROPTYPE_CHR
+			|| targetchr->aibot != NULL
+			|| damage <= 0.0f) {
+		sysLogPrintf(LOG_NOTE,
+				"NETCOOP: host rejected client hit mode=%d state=%u clientplayer=%p targetchr=%d target=%p damage=%.3f",
+				g_NetGameMode,
+				srccl->state,
+				(void *)srccl->player,
+				targetchrnum,
+				(void *)targetchr,
+				damage);
+		return 0;
+	}
+
+	const bool damageshield = (flags & (1 << 0)) != 0;
+	const bool explosion = (flags & (1 << 1)) != 0;
+
+	sysLogPrintf(LOG_NOTE,
+			"NETCOOP: host accepted client hit client=%u targetchr=%d damage=%.3f",
+			srccl->id,
+			targetchrnum,
+			damage);
+
+	/*
+	 * The client supplies its rendered hit result, but never chooses the
+	 * attacker or applies damage. The host resolves both authoritative props,
+	 * applies the hit, and broadcasts the normal SVC_CHR_DAMAGE update.
+	 */
+	chrDamage(targetchr, damage, &vector, gset, clientprop, hitpart, damageshield,
+			prop2, NULL, NULL, side, arg11ptr, explosion, explosionposptr);
+
+	return src->error;
+}
+
+u32 netmsgSvcChrDamageRead(struct netbuf *src, struct netclient *srccl)
+{
+	const u8 flags = netbufReadU8(src);
+	struct prop *chrprop = netbufReadPropPtr(src);
+	const s16 targetchrnum = netbufReadS16(src);
+	const f32 damage = netbufReadF32(src);
+	struct coord vector; netbufReadCoord(src, &vector);
+	const s16 hitpart = netbufReadS16(src);
+	const s16 side = netbufReadS16(src);
+
+	struct gset gsetvalue;
+	struct gset *gset = NULL;
+	if (flags & (1 << 2)) {
+		netbufReadGset(src, &gsetvalue);
+		gset = &gsetvalue;
+	}
+
+	struct prop *aprop = NULL;
+	s16 attackerchrnum = -1;
+	if (flags & (1 << 3)) {
+		aprop = netbufReadPropPtr(src);
+		attackerchrnum = netbufReadS16(src);
+	}
 	struct prop *prop2 = (flags & (1 << 4)) ? netbufReadPropPtr(src) : NULL;
 
 	s16 arg11[3], *arg11ptr = NULL;
@@ -2309,9 +2809,28 @@ u32 netmsgSvcChrDamageRead(struct netbuf *src, struct netclient *srccl)
 		return src->error;
 	}
 
+	if (targetchrnum >= 0) {
+		struct chrdata *targetchr = chrFindByLiteralId(targetchrnum);
+		chrprop = targetchr ? targetchr->prop : NULL;
+	}
+
+	if (attackerchrnum >= 0) {
+		struct chrdata *attackerchr = chrFindByLiteralId(attackerchrnum);
+		aprop = attackerchr ? attackerchr->prop : NULL;
+	}
+
 	if (chrprop == NULL || chrprop->chr == NULL) {
 		sysLogPrintf(LOG_WARNING, "NET: SVC_CHR_DAMAGE target character does not exist");
 		return 0;
+	}
+
+	if (g_NetGameMode == NETGAMEMODE_COOP) {
+		sysLogPrintf(LOG_NOTE,
+				"NETCOOP: client applying authoritative damage targetchr=%d attackerchr=%d targettype=%d damage=%.3f",
+				targetchrnum,
+				attackerchrnum,
+				chrprop->type,
+				damage);
 	}
 
 	const bool damageshield = (flags & (1 << 0)) != 0;
