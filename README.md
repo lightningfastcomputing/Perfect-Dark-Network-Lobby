@@ -1,97 +1,140 @@
-# Thorfect Dark — Native Lobby + Authoritative Sims + Slayer Fly-by-Wire
+# Thorfect Dark — Network Cooperative Campaign WIP
 
-This branch contains the current Thorfect Dark network-lobby build with:
+This branch contains the latest work-in-progress implementation of network cooperative campaign play for the Perfect Dark PC port.
 
-- public master-server registry and lobby chat;
-- public server browser;
-- native green in-game Network Lobby;
-- Protocol 21 networking;
-- host-authoritative Sim movement, combat, death, respawn, weapons, firing, and corrected client-side falling;
-- host-authoritative Slayer rockets with working remote-client fly-by-wire camera, repeat firing, and responsive loss-tolerant client steering;
-- packaged Windows executables for the master, browser, and game.
+## Current Status
 
-Repository branch:
+* Native green Network Lobby
+* Public master-server registry and lobby chat
+* Public server browser
+* Network cooperative campaign support
+* Carrington Villa is currently working
+* Chicago is currently broken
+* Packaged Windows game, browser, and master-server executables
+* Work in progress: expect crashes, synchronization issues, and mission-specific bugs
+
+## Branch
 
 ```text
-net-sim/simulant-lobby-latest
+cooperative-lobby-latest
 ```
 
 ## Requirements
 
-- Windows 10 or Windows 11, 64-bit.
-- Git for acquiring and updating the branch.
-- Microsoft Visual C++ x64 runtime.
-- A legally obtained Perfect Dark NTSC-final ROM.
+* Windows 10 or Windows 11, 64-bit
+* Git
+* Microsoft Visual C++ x64 runtime
+* A legally obtained Perfect Dark NTSC-final ROM
 
-The ROM is **not included**. Place your own ROM here after downloading the branch:
+The ROM is **not included**.
+
+After downloading the branch, place your ROM here:
 
 ```text
 data\pd.ntsc-final.z64
 ```
 
-Users in the same network game must use compatible ROMs and the same Protocol 21 build.
+All players should use the same build and compatible ROM.
 
-## Install required dependencies — PowerShell one-liner
+## Install and Run — PowerShell One-Liner
 
-Run PowerShell as Administrator:
-
-```powershell
-winget install --id Git.Git -e --accept-package-agreements --accept-source-agreements; winget install --id Microsoft.VCRedist.2015+.x64 -e --accept-package-agreements --accept-source-agreements
-```
-
-The packaged `.exe` files do not require Python.
-
-## Acquire/update and run the master server — PowerShell one-liner
+Open PowerShell and run:
 
 ```powershell
-$dir="$HOME\Thorfect-Dark-Master"; $repo="https://github.com/lightningfastcomputing/Perfect-Dark-Network-Lobby.git"; $branch="net-sim/simulant-lobby-latest"; if(Test-Path "$dir\.git"){git -C $dir fetch origin $branch; git -C $dir reset --hard "origin/$branch"}else{git clone --branch $branch --single-branch $repo $dir}; Start-Process -FilePath "$dir\perfect_thork_master.exe" -WorkingDirectory $dir
+$dir="$HOME\Thorfect-Dark-Coop"; $repo="https://github.com/lightningfastcomputing/Perfect-Dark-Network-Lobby.git"; $branch="cooperative-lobby-latest"; if(Test-Path "$dir\.git"){git -C $dir fetch origin $branch; git -C $dir checkout -B $branch "origin/$branch"; git -C $dir reset --hard "origin/$branch"}else{git clone --branch $branch --single-branch $repo $dir}; New-Item -ItemType Directory -Force "$dir\data" | Out-Null; if(Test-Path "$dir\data\pd.ntsc-final.z64"){Start-Process -FilePath "$dir\perfect_thork_browser.exe" -WorkingDirectory $dir}else{Write-Host "Downloaded successfully. Add your ROM to: $dir\data\pd.ntsc-final.z64" -ForegroundColor Yellow; Start-Process explorer.exe "$dir\data"}
 ```
 
-Start the master, leave it open, and ensure its TCP port is reachable by players who need to use it. The default master port is `8088`.
+This command:
 
-## Acquire/update and run the browser — PowerShell one-liner
+1. Downloads the `cooperative-lobby-latest` branch.
+2. Updates an existing installation to the latest commit.
+3. Creates the required `data` directory.
+4. Launches the server browser when the ROM is present.
+5. Opens the ROM directory when the ROM is missing.
 
-```powershell
-$dir="$HOME\Thorfect-Dark"; $repo="https://github.com/lightningfastcomputing/Perfect-Dark-Network-Lobby.git"; $branch="net-sim/simulant-lobby-latest"; if(Test-Path "$dir\.git"){git -C $dir fetch origin $branch; git -C $dir reset --hard "origin/$branch"}else{git clone --branch $branch --single-branch $repo $dir}; New-Item -ItemType Directory -Force "$dir\data" | Out-Null; Start-Process -FilePath "$dir\perfect_thork_browser.exe" -WorkingDirectory $dir
-```
-
-Before hosting or joining, put your own ROM at:
+The installation directory is:
 
 ```text
-%USERPROFILE%\Thorfect-Dark\data\pd.ntsc-final.z64
+%USERPROFILE%\Thorfect-Dark-Coop
 ```
 
-The browser expects `pd.x86_64.exe` beside `perfect_thork_browser.exe`.
-
-## Run the game directly
-
-```powershell
-Start-Process -FilePath "$HOME\Thorfect-Dark\pd.x86_64.exe" -WorkingDirectory "$HOME\Thorfect-Dark"
-```
-
-For public play, normally launch through `perfect_thork_browser.exe` so the correct host or join arguments are supplied.
-
-## Default ports
-
-| Service | Protocol | Default port |
-|---|---:|---:|
-| Master registry/chat | TCP | 8088 |
-| Perfect Dark game | UDP | 27100 |
-
-A public host normally needs UDP `27100` forwarded to the hosting PC. The master-server operator needs TCP `8088` reachable.
-
-## Source
-
-The branch includes the C source corresponding to the packaged Protocol 21 game executable. The primary networking changes are under:
+Place your ROM at:
 
 ```text
-port/include/net/
-port/src/net/
-src/game/
+%USERPROFILE%\Thorfect-Dark-Coop\data\pd.ntsc-final.z64
 ```
 
-## Updating later
+Then run the same one-liner again.
 
-Re-running either acquire/run one-liner fetches the branch and hard-resets that local install to the newest published version.
+## Run the Browser Directly
 
-Local changes inside those acquisition directories will be discarded during an update.
+```powershell
+Start-Process -FilePath "$HOME\Thorfect-Dark-Coop\perfect_thork_browser.exe" -WorkingDirectory "$HOME\Thorfect-Dark-Coop"
+```
+
+Launching through the browser is recommended because it supplies the appropriate hosting and joining arguments to the game.
+
+## Run the Game Directly
+
+```powershell
+Start-Process -FilePath "$HOME\Thorfect-Dark-Coop\pd.x86_64.exe" -WorkingDirectory "$HOME\Thorfect-Dark-Coop"
+```
+
+## Run the Master Server
+
+```powershell
+Start-Process -FilePath "$HOME\Thorfect-Dark-Coop\perfect_thork_master.exe" -WorkingDirectory "$HOME\Thorfect-Dark-Coop"
+```
+
+Most players do not need to operate their own master server.
+
+## Default Ports
+
+| Service                  | Protocol | Default Port |
+| ------------------------ | -------: | -----------: |
+| Master registry and chat |      TCP |         8088 |
+| Perfect Dark game        |      UDP |        27100 |
+
+A public game host will normally need to forward UDP port `27100` to the hosting computer.
+
+A master-server operator will need TCP port `8088` reachable.
+
+## Cooperative Testing
+
+Current known campaign status:
+
+| Mission          | Status                   |
+| ---------------- | ------------------------ |
+| Carrington Villa | Working                  |
+| Chicago          | Broken                   |
+| Other missions   | Untested or experimental |
+
+For the most useful bug reports, include:
+
+* Host and client logs
+* Mission and difficulty
+* Number of connected players
+* Whether the problem happened on the host, client, or both
+* The last objective or event completed
+* Exact steps needed to reproduce the problem
+
+Relevant logs may include:
+
+```text
+pd-client.log
+pd-server.log
+```
+
+## Updating Later
+
+Run the installation one-liner again.
+
+It fetches the newest version of `cooperative-lobby-latest` and resets the installation directory to the published branch state.
+
+Local modifications inside the installation directory will be discarded during an update.
+
+## Disclaimer
+
+This is an experimental fan-made networking modification. It is not affiliated with or endorsed by Rare, Nintendo, Microsoft, or the original Perfect Dark developers.
+
+A legally obtained ROM is required and is not distributed by this repository.
