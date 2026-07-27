@@ -22,34 +22,34 @@ cooperative-lobby-latest
 ## Requirements
 
 * Windows 10 or Windows 11, 64-bit
-* Git
+* Git for Windows
 * Microsoft Visual C++ x64 runtime
 * A legally obtained Perfect Dark NTSC-final ROM
 
 The ROM is **not included**.
 
-After downloading the branch, place your ROM here:
+After downloading the branch, place your ROM at:
 
 ```text
 data\pd.ntsc-final.z64
 ```
 
-All players should use the same build and compatible ROM.
+All players should use the same build and a compatible ROM.
 
-## Install and Run — PowerShell One-Liner
+## Recommended Install and Launch Command
 
-Open PowerShell and run:
+Open PowerShell and run the following command:
 
 ```powershell
-$dir="$HOME\Thorfect-Dark-Coop"; $repo="https://github.com/lightningfastcomputing/Perfect-Dark-Network-Lobby.git"; $branch="cooperative-lobby-latest"; if(Test-Path "$dir\.git"){git -C $dir fetch origin $branch; git -C $dir checkout -B $branch "origin/$branch"; git -C $dir reset --hard "origin/$branch"}else{git clone --branch $branch --single-branch $repo $dir}; New-Item -ItemType Directory -Force "$dir\data" | Out-Null; Start-Process -FilePath "$dir\pd.x86_64.exe" -WorkingDirectory $dir
+$dir="$HOME\Thorfect-Dark-Coop"; $repo="https://github.com/lightningfastcomputing/Perfect-Dark-Network-Lobby.git"; $branch="cooperative-lobby-latest"; if(Test-Path "$dir\.git"){git -C "$dir" fetch origin "$branch"; if($LASTEXITCODE -ne 0){throw "Unable to fetch the repository."}; git -C "$dir" checkout -f -B "$branch" "origin/$branch"; if($LASTEXITCODE -ne 0){throw "Unable to check out the requested branch."}; git -C "$dir" reset --hard "origin/$branch"; if($LASTEXITCODE -ne 0){throw "Unable to update the installation."}}elseif(Test-Path "$dir"){throw "The destination already exists but is not a Git repository: $dir"}else{git clone --branch "$branch" --single-branch "$repo" "$dir"; if($LASTEXITCODE -ne 0){throw "Unable to clone the repository."}}; $data="$dir\data"; New-Item -ItemType Directory -Force "$data" | Out-Null; $rom="$data\pd.ntsc-final.z64"; if(Test-Path "$rom"){$exe="$dir\perfect_thork_browser.exe"; if(!(Test-Path "$exe")){throw "Executable not found: $exe"}; Start-Process -FilePath "$exe" -WorkingDirectory "$dir"}else{Write-Host "Place your legally obtained ROM at: $rom"; Start-Process -FilePath "explorer.exe" -ArgumentList "$data"}
 ```
 
 This command:
 
-1. Downloads the `cooperative-lobby-latest` branch.
-2. Updates an existing installation to the latest commit.
+1. Clones the `cooperative-lobby-latest` branch when it is not already installed.
+2. Updates an existing installation to the latest published commit.
 3. Creates the required `data` directory.
-4. Launches the server browser when the ROM is present.
+4. Launches the Thorfect Dark server browser when the ROM is present.
 5. Opens the ROM directory when the ROM is missing.
 
 The installation directory is:
@@ -58,44 +58,56 @@ The installation directory is:
 %USERPROFILE%\Thorfect-Dark-Coop
 ```
 
-Place your ROM at:
+Place your legally obtained ROM at:
 
 ```text
 %USERPROFILE%\Thorfect-Dark-Coop\data\pd.ntsc-final.z64
 ```
 
-Then run the same one-liner again.
+After adding the ROM, run the same PowerShell command again.
 
-## Run the Browser Directly
+## Run the Browser
+
+The browser is the recommended way to launch Thorfect Dark because it supplies the appropriate hosting and joining arguments to the game.
+
+This command installs or updates the branch and then launches the browser:
 
 ```powershell
-$dir="$HOME\Thorfect-Dark-Coop"; $repo="https://github.com/lightningfastcomputing/Perfect-Dark-Network-Lobby.git"; $branch="cooperative-lobby-latest"; if(Test-Path "$dir\.git"){git -C "$dir" fetch origin "$branch"; if($LASTEXITCODE -ne 0){throw "Unable to fetch the repository."}; git -C "$dir" checkout -f -B "$branch" "origin/$branch"; git -C "$dir" reset --hard "origin/$branch"}elseif(Test-Path "$dir"){throw "The destination already exists but is not a Git repository: $dir"}else{git clone --branch "$branch" --single-branch "$repo" "$dir"}; if($LASTEXITCODE -ne 0){throw "Unable to clone or update the repository."}; New-Item -ItemType Directory -Force "$dir\data" | Out-Null; $exe="$dir\perfect_thork_browser.exe"; if(!(Test-Path "$exe")){throw "Executable not found: $exe"}; Start-Process -FilePath "$exe" -WorkingDirectory "$dir"
+$dir="$HOME\Thorfect-Dark-Coop"; $repo="https://github.com/lightningfastcomputing/Perfect-Dark-Network-Lobby.git"; $branch="cooperative-lobby-latest"; if(Test-Path "$dir\.git"){git -C "$dir" fetch origin "$branch"; if($LASTEXITCODE -ne 0){throw "Unable to fetch the repository."}; git -C "$dir" checkout -f -B "$branch" "origin/$branch"; if($LASTEXITCODE -ne 0){throw "Unable to check out the requested branch."}; git -C "$dir" reset --hard "origin/$branch"; if($LASTEXITCODE -ne 0){throw "Unable to update the installation."}}elseif(Test-Path "$dir"){throw "The destination already exists but is not a Git repository: $dir"}else{git clone --branch "$branch" --single-branch "$repo" "$dir"; if($LASTEXITCODE -ne 0){throw "Unable to clone the repository."}}; New-Item -ItemType Directory -Force "$dir\data" | Out-Null; $exe="$dir\perfect_thork_browser.exe"; if(!(Test-Path "$exe")){throw "Executable not found: $exe"}; Start-Process -FilePath "$exe" -WorkingDirectory "$dir"
 ```
-
-Launching through the browser is recommended because it supplies the appropriate hosting and joining arguments to the game.
 
 ## Run the Game Directly
 
+This command installs or updates the branch and then launches the game executable directly:
+
 ```powershell
-$dir="$HOME\Thorfect-Dark-Coop"; $repo="https://github.com/lightningfastcomputing/Perfect-Dark-Network-Lobby.git"; $branch="cooperative-lobby-latest"; if(Test-Path "$dir\.git"){git -C "$dir" fetch origin "$branch"; if($LASTEXITCODE -ne 0){throw "Unable to fetch the repository."}; git -C "$dir" checkout -f -B "$branch" "origin/$branch"; git -C "$dir" reset --hard "origin/$branch"}elseif(Test-Path "$dir"){throw "The destination already exists but is not a Git repository: $dir"}else{git clone --branch "$branch" --single-branch "$repo" "$dir"}; if($LASTEXITCODE -ne 0){throw "Unable to clone or update the repository."}; New-Item -ItemType Directory -Force "$dir\data" | Out-Null; $exe="$dir\pd.x86_64.exe"; if(!(Test-Path "$exe")){throw "Executable not found: $exe"}; Start-Process -FilePath "$exe" -WorkingDirectory "$dir"```
+$dir="$HOME\Thorfect-Dark-Coop"; $repo="https://github.com/lightningfastcomputing/Perfect-Dark-Network-Lobby.git"; $branch="cooperative-lobby-latest"; if(Test-Path "$dir\.git"){git -C "$dir" fetch origin "$branch"; if($LASTEXITCODE -ne 0){throw "Unable to fetch the repository."}; git -C "$dir" checkout -f -B "$branch" "origin/$branch"; if($LASTEXITCODE -ne 0){throw "Unable to check out the requested branch."}; git -C "$dir" reset --hard "origin/$branch"; if($LASTEXITCODE -ne 0){throw "Unable to update the installation."}}elseif(Test-Path "$dir"){throw "The destination already exists but is not a Git repository: $dir"}else{git clone --branch "$branch" --single-branch "$repo" "$dir"; if($LASTEXITCODE -ne 0){throw "Unable to clone the repository."}}; New-Item -ItemType Directory -Force "$dir\data" | Out-Null; $exe="$dir\pd.x86_64.exe"; if(!(Test-Path "$exe")){throw "Executable not found: $exe"}; Start-Process -FilePath "$exe" -WorkingDirectory "$dir"
+```
+
+Launching the game directly bypasses the server browser. Hosting and joining network games may require command-line arguments normally supplied by the browser.
 
 ## Run the Master Server
 
+This command installs or updates the branch and then launches the master-server executable:
+
 ```powershell
-$dir="$HOME\Thorfect-Dark-Coop"; $repo="https://github.com/lightningfastcomputing/Perfect-Dark-Network-Lobby.git"; $branch="cooperative-lobby-latest"; if(Test-Path "$dir\.git"){git -C "$dir" fetch origin "$branch"; if($LASTEXITCODE -ne 0){throw "Unable to fetch the repository."}; git -C "$dir" checkout -f -B "$branch" "origin/$branch"; git -C "$dir" reset --hard "origin/$branch"}elseif(Test-Path "$dir"){throw "The destination already exists but is not a Git repository: $dir"}else{git clone --branch "$branch" --single-branch "$repo" "$dir"}; if($LASTEXITCODE -ne 0){throw "Unable to clone or update the repository."}; $exe="$dir\perfect_thork_master.exe"; if(!(Test-Path "$exe")){throw "Executable not found: $exe"}; Start-Process -FilePath "$exe" -WorkingDirectory "$dir"```
+$dir="$HOME\Thorfect-Dark-Coop"; $repo="https://github.com/lightningfastcomputing/Perfect-Dark-Network-Lobby.git"; $branch="cooperative-lobby-latest"; if(Test-Path "$dir\.git"){git -C "$dir" fetch origin "$branch"; if($LASTEXITCODE -ne 0){throw "Unable to fetch the repository."}; git -C "$dir" checkout -f -B "$branch" "origin/$branch"; if($LASTEXITCODE -ne 0){throw "Unable to check out the requested branch."}; git -C "$dir" reset --hard "origin/$branch"; if($LASTEXITCODE -ne 0){throw "Unable to update the installation."}}elseif(Test-Path "$dir"){throw "The destination already exists but is not a Git repository: $dir"}else{git clone --branch "$branch" --single-branch "$repo" "$dir"; if($LASTEXITCODE -ne 0){throw "Unable to clone the repository."}}; $exe="$dir\perfect_thork_master.exe"; if(!(Test-Path "$exe")){throw "Executable not found: $exe"}; Start-Process -FilePath "$exe" -WorkingDirectory "$dir"
+```
 
 Most players do not need to operate their own master server.
 
 ## Default Ports
 
-| Service                  | Protocol | Default Port |
-| ------------------------ | -------: | -----------: |
-| Master registry and chat |      TCP |         8088 |
-| Perfect Dark game        |      UDP |        27100 |
+| Service                        | Protocol | Default port |
+| ------------------------------ | -------: | -----------: |
+| Master registry and lobby chat |      TCP |       `8088` |
+| Perfect Dark game traffic      |      UDP |      `27100` |
 
-A public game host will normally need to forward UDP port `27100` to the hosting computer.
+A player hosting a public game will normally need to forward UDP port `27100` to the hosting computer.
 
-A master-server operator will need TCP port `8088` reachable.
+A master-server operator will need to make TCP port `8088` publicly reachable.
+
+Windows Firewall may also ask for permission the first time each executable is launched.
 
 ## Cooperative Testing
 
@@ -112,9 +124,10 @@ For the most useful bug reports, include:
 * Host and client logs
 * Mission and difficulty
 * Number of connected players
-* Whether the problem happened on the host, client, or both
-* The last objective or event completed
+* Whether the problem occurred on the host, client, or both
+* The last objective or mission event completed
 * Exact steps needed to reproduce the problem
+* Any crash message or screenshot
 
 Relevant logs may include:
 
@@ -125,14 +138,22 @@ pd-server.log
 
 ## Updating Later
 
-Run the installation one-liner again.
+Run any of the PowerShell launch commands again.
 
-It fetches the newest version of `cooperative-lobby-latest` and resets the installation directory to the published branch state.
+Each command fetches the newest version of `cooperative-lobby-latest` and resets the tracked installation files to the published branch state before launching the selected executable.
 
-Local modifications inside the installation directory will be discarded during an update.
+Tracked local modifications inside the installation directory will be discarded during an update.
+
+The ROM is an untracked file and will not normally be removed by these commands. Nevertheless, keeping a backup of your ROM is recommended.
+
+## Experimental Software Warning
+
+Thorfect Dark cooperative campaign support is under active development.
+
+Expect crashes, synchronization problems, incomplete mission scripting, visual inconsistencies, and mission-specific bugs. Progress in one mission does not guarantee that another mission will work.
 
 ## Disclaimer
 
-This is an experimental fan-made networking modification. It is not affiliated with or endorsed by Rare, Nintendo, Microsoft, or the original Perfect Dark developers.
+This is an experimental, fan-made networking modification. It is not affiliated with or endorsed by Rare, Nintendo, Microsoft, or the original Perfect Dark developers.
 
-A legally obtained ROM is required and is not distributed by this repository.
+A legally obtained Perfect Dark ROM is required and is not distributed by this repository.
