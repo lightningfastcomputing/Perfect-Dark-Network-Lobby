@@ -69,7 +69,7 @@ Then run the same one-liner again.
 ## Run the Browser Directly
 
 ```powershell
-Start-Process -FilePath "$HOME\Thorfect-Dark-Coop\perfect_thork_browser.exe" -WorkingDirectory "$HOME\Thorfect-Dark-Coop"
+$dir="$HOME\Thorfect-Dark-Coop"; $repo="https://github.com/lightningfastcomputing/Perfect-Dark-Network-Lobby.git"; $branch="cooperative-lobby-latest"; if(Test-Path "$dir\.git"){git -C "$dir" fetch origin "$branch"; if($LASTEXITCODE -ne 0){throw "Unable to fetch the repository."}; git -C "$dir" checkout -f -B "$branch" "origin/$branch"; git -C "$dir" reset --hard "origin/$branch"}elseif(Test-Path "$dir"){throw "The destination already exists but is not a Git repository: $dir"}else{git clone --branch "$branch" --single-branch "$repo" "$dir"}; if($LASTEXITCODE -ne 0){throw "Unable to clone or update the repository."}; New-Item -ItemType Directory -Force "$dir\data" | Out-Null; $exe="$dir\perfect_thork_browser.exe"; if(!(Test-Path "$exe")){throw "Executable not found: $exe"}; Start-Process -FilePath "$exe" -WorkingDirectory "$dir"
 ```
 
 Launching through the browser is recommended because it supplies the appropriate hosting and joining arguments to the game.
@@ -77,14 +77,12 @@ Launching through the browser is recommended because it supplies the appropriate
 ## Run the Game Directly
 
 ```powershell
-Start-Process -FilePath "$HOME\Thorfect-Dark-Coop\pd.x86_64.exe" -WorkingDirectory "$HOME\Thorfect-Dark-Coop"
-```
+$dir="$HOME\Thorfect-Dark-Coop"; $repo="https://github.com/lightningfastcomputing/Perfect-Dark-Network-Lobby.git"; $branch="cooperative-lobby-latest"; if(Test-Path "$dir\.git"){git -C "$dir" fetch origin "$branch"; if($LASTEXITCODE -ne 0){throw "Unable to fetch the repository."}; git -C "$dir" checkout -f -B "$branch" "origin/$branch"; git -C "$dir" reset --hard "origin/$branch"}elseif(Test-Path "$dir"){throw "The destination already exists but is not a Git repository: $dir"}else{git clone --branch "$branch" --single-branch "$repo" "$dir"}; if($LASTEXITCODE -ne 0){throw "Unable to clone or update the repository."}; New-Item -ItemType Directory -Force "$dir\data" | Out-Null; $exe="$dir\pd.x86_64.exe"; if(!(Test-Path "$exe")){throw "Executable not found: $exe"}; Start-Process -FilePath "$exe" -WorkingDirectory "$dir"```
 
 ## Run the Master Server
 
 ```powershell
-Start-Process -FilePath "$HOME\Thorfect-Dark-Coop\perfect_thork_master.exe" -WorkingDirectory "$HOME\Thorfect-Dark-Coop"
-```
+$dir="$HOME\Thorfect-Dark-Coop"; $repo="https://github.com/lightningfastcomputing/Perfect-Dark-Network-Lobby.git"; $branch="cooperative-lobby-latest"; if(Test-Path "$dir\.git"){git -C "$dir" fetch origin "$branch"; if($LASTEXITCODE -ne 0){throw "Unable to fetch the repository."}; git -C "$dir" checkout -f -B "$branch" "origin/$branch"; git -C "$dir" reset --hard "origin/$branch"}elseif(Test-Path "$dir"){throw "The destination already exists but is not a Git repository: $dir"}else{git clone --branch "$branch" --single-branch "$repo" "$dir"}; if($LASTEXITCODE -ne 0){throw "Unable to clone or update the repository."}; $exe="$dir\perfect_thork_master.exe"; if(!(Test-Path "$exe")){throw "Executable not found: $exe"}; Start-Process -FilePath "$exe" -WorkingDirectory "$dir"```
 
 Most players do not need to operate their own master server.
 
