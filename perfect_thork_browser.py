@@ -18,6 +18,7 @@ DEFAULT_MASTER = "http://127.0.0.1:8088"
 DEFAULT_PORT = 27100
 HEARTBEAT_SECONDS = 15
 CHAT_POLL_MS = 2000
+DEFAULT_MODE = "Co-Op"
 
 
 def base_dir() -> Path:
@@ -58,7 +59,7 @@ def api(master: str, path: str, payload: dict | None = None, timeout: float = 5.
 
 
 def load_settings() -> dict:
-    defaults = {"master": DEFAULT_MASTER, "player": "Player", "server_name": "Perfect Dark Match", "port": DEFAULT_PORT, "advertised_ip": detect_lan_ip()}
+    defaults = {"master": DEFAULT_MASTER, "player": "Player", "server_name": "Perfect Dark Match", "port": DEFAULT_PORT, "advertised_ip": detect_lan_ip(), "mode": DEFAULT_MODE}
     try:
         loaded = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
         if isinstance(loaded, dict):
@@ -89,6 +90,7 @@ class PerfectThork(tk.Tk):
         self.server_name = tk.StringVar(value=str(settings["server_name"]))
         self.port = tk.StringVar(value=str(settings["port"]))
         self.advertised_ip = tk.StringVar(value=str(settings.get("advertised_ip", detect_lan_ip())))
+        self.host_mode = tk.StringVar(value=str(settings.get("mode", DEFAULT_MODE)))
         self.status = tk.StringVar(value="Ready")
         self.host_session: dict | None = None
         self.host_stop = threading.Event()
@@ -118,7 +120,9 @@ class PerfectThork(tk.Tk):
 
         ttk.Label(outer, text="Host game IP:").grid(row=3, column=0, sticky="w", pady=(6, 0))
         ttk.Entry(outer, textvariable=self.advertised_ip).grid(row=3, column=1, sticky="ew", padx=(6, 12), pady=(6, 0))
-        ttk.Button(outer, text="USE MY LAN IP", command=lambda: self.advertised_ip.set(detect_lan_ip())).grid(row=3, column=2, columnspan=2, sticky="w", pady=(6, 0))
+        mode_box = ttk.Combobox(outer, textvariable=self.host_mode, values=("Co-Op", "Combat Simulator"), state="readonly", width=18)
+        mode_box.grid(row=3, column=2, sticky="w", pady=(6, 0))
+        ttk.Button(outer, text="USE MY LAN IP", command=lambda: self.advertised_ip.set(detect_lan_ip())).grid(row=3, column=3, sticky="w", pady=(6, 0), padx=(6, 0))
 
         columns = ("name", "host", "players", "map", "mode", "status", "address")
         self.tree = ttk.Treeview(outer, columns=columns, show="headings", selectmode="browse")
@@ -229,7 +233,7 @@ class PerfectThork(tk.Tk):
             port = int(self.port.get())
         except ValueError:
             port = DEFAULT_PORT
-        save_settings({"master": self.master_url.get().strip(), "player": self.player.get().strip(), "server_name": self.server_name.get().strip(), "port": port, "advertised_ip": self.advertised_ip.get().strip()})
+        save_settings({"master": self.master_url.get().strip(), "player": self.player.get().strip(), "server_name": self.server_name.get().strip(), "port": port, "advertised_ip": self.advertised_ip.get().strip(), "mode": self.host_mode.get().strip() or DEFAULT_MODE})
 
     def refresh(self) -> None:
         self.status.set("Refreshing server list…")
@@ -276,16 +280,19 @@ class PerfectThork(tk.Tk):
         self.server_name.set(server_name)
         self.port.set(str(port))
         self._remember()
+        player_name = self.player.get().strip() or "Player"
+        selected_mode = self.host_mode.get().strip() or DEFAULT_MODE
+        is_coop = selected_mode.lower().startswith("co-op") or selected_mode.lower().startswith("coop")
         payload = {
             "name": server_name,
-            "host_name": self.player.get().strip() or "Host",
+            "host_name": player_name,
             "port": port,
             "advertised_ip": self.advertised_ip.get().strip() or detect_lan_ip(),
             "lan_ip": detect_lan_ip(),
             "players": 1,
-            "max_players": 8,
+            "max_players": 2 if is_coop else 8,
             "map_name": "Select in lobby",
-            "mode": "Combat Simulator",
+            "mode": "Co-Op" if is_coop else "Combat Simulator",
             "status": "Lobby",
             "version": "thorfect-1.0.3",
         }
@@ -299,12 +306,25 @@ class PerfectThork(tk.Tk):
         self.host_stop.clear()
         threading.Thread(target=self._heartbeat_loop, daemon=True).start()
         try:
-            subprocess.Popen([str(GAME_EXE), "--portable", "--skip-intro", "--host", "--port", str(port), "--maxclients", "8"], cwd=str(BASE_DIR))
+            subprocess.Popen([
+                str(GAME_EXE),
+                "--portable",
+                "--skip-intro",
+                "--host",
+                "--port",
+                str(port),
+                "--maxclients",
+                "2" if is_coop else "8",
+                "--player-name",
+                player_name,
+                "--net-mode",
+                "coop" if is_coop else "combat",
+            ], cwd=str(BASE_DIR))
         except OSError as exc:
             self.stop_advertising(silent=True)
             messagebox.showerror(APP_TITLE, f"Could not launch Perfect Dark:\n{exc}")
             return
-        self.status.set(f"Advertising '{server_name}' on UDP {port}")
+        self.status.set(f"Advertising '{server_name}' as {selected_mode} on UDP {port}")
         self.after(500, self.refresh)
 
     def _heartbeat_loop(self) -> None:
@@ -381,9 +401,22 @@ class PerfectThork(tk.Tk):
             return
 
         address = f"{connect_host}:{server['port']}"
+        player_name = self.player.get().strip() or "Player"
+        mode_text = str(server.get("mode", DEFAULT_MODE)).strip().lower()
+        mode_arg = "coop" if "coop" in mode_text else "combat"
         try:
             subprocess.Popen(
-                [str(GAME_EXE), "--portable", "--skip-intro", "--connect", address],
+                [
+                    str(GAME_EXE),
+                    "--portable",
+                    "--skip-intro",
+                    "--connect",
+                    address,
+                    "--player-name",
+                    player_name,
+                    "--net-mode",
+                    mode_arg,
+                ],
                 cwd=str(BASE_DIR),
             )
         except OSError as exc:

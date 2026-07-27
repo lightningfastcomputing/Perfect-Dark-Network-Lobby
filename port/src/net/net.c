@@ -73,6 +73,7 @@ static s32 g_NetInit = false;
 static ENetHost *g_NetHost;
 static ENetAddress g_NetLocalAddr;
 static ENetAddress g_NetRemoteAddr;
+static char g_NetArgPlayerName[NET_MAX_NAME + 1];
 
 static u32 g_NetNextUpdate = 0;
 
@@ -315,16 +316,29 @@ static inline s32 netClientNeedMove(const struct netclient *cl)
 
 static inline void netClientReadConfig(struct netclient *cl, const s32 playernum)
 {
+	const char *argPlayerName = sysArgGetString("--player-name");
+
 	cl->settings.options = g_PlayerConfigsArray[playernum].options;
 	cl->settings.bodynum = g_PlayerConfigsArray[playernum].base.mpbodynum;
 	cl->settings.headnum = g_PlayerConfigsArray[playernum].base.mpheadnum;
 	cl->settings.fovy = g_PlayerExtCfg[playernum].fovy;
 	cl->settings.fovzoommult = g_PlayerExtCfg[playernum].fovzoommult;
-	memcpy(cl->settings.name, g_PlayerConfigsArray[playernum].base.name, sizeof(cl->settings.name));
-	// the \n will be readded in the playerconfig
-	char *newline = strrchr(g_NetLocalClient->settings.name, '\n');
-	if (newline) {
-		*newline = '\0';
+
+	if (argPlayerName && argPlayerName[0] != '\0') {
+		strncpy(g_NetArgPlayerName, argPlayerName, sizeof(g_NetArgPlayerName) - 1);
+		g_NetArgPlayerName[sizeof(g_NetArgPlayerName) - 1] = '\0';
+
+		strncpy(cl->settings.name, g_NetArgPlayerName, sizeof(cl->settings.name) - 1);
+		cl->settings.name[sizeof(cl->settings.name) - 1] = '\0';
+
+		snprintf(g_PlayerConfigsArray[playernum].base.name, sizeof(g_PlayerConfigsArray[playernum].base.name), "%s\n", cl->settings.name);
+	} else {
+		memcpy(cl->settings.name, g_PlayerConfigsArray[playernum].base.name, sizeof(cl->settings.name));
+		// the \n will be readded in the playerconfig
+		char *newline = strrchr(cl->settings.name, '\n');
+		if (newline) {
+			*newline = '\0';
+		}
 	}
 }
 
@@ -463,6 +477,15 @@ void netInit(void)
 	if (argjoin) {
 		strncpy(g_NetLastJoinAddr, argjoin, sizeof(g_NetLastJoinAddr) - 1);
 		g_NetJoinLatch = true;
+	}
+
+	const char *argmode = sysArgGetString("--net-mode");
+	if (argmode) {
+		if (strcasecmp(argmode, "coop") == 0 || strcasecmp(argmode, "co-op") == 0) {
+			g_NetGameMode = NETGAMEMODE_COOP;
+		} else {
+			g_NetGameMode = NETGAMEMODE_COMBAT;
+		}
 	}
 
 	if (sysArgCheck("--host")) {
