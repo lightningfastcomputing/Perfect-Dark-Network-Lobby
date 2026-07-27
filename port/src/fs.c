@@ -3,7 +3,11 @@
 #include <string.h>
 #include <limits.h>
 #include <ctype.h>
+#ifdef _WIN32
+#include <direct.h>
+#else
 #include <unistd.h>
+#endif
 #include <sys/stat.h>
 #include <PR/ultratypes.h>
 #include "config.h"
@@ -11,10 +15,6 @@
 #include "platform.h"
 #include "utils.h"
 #include "fs.h"
-#ifdef PLATFORM_WIN32
-#include <direct.h>
-#endif
-
 #define DEFAULT_BASEDIR_NAME "data"
 
 static char baseDir[FS_MAXPATH + 1]; // replaces $B

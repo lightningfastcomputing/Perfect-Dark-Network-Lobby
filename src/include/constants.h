@@ -148,6 +148,8 @@
 
 #ifdef __sgi
 #define ALIGNED16
+#elif defined(_MSC_VER)
+#define ALIGNED16 __declspec(align(16))
 #else
 #define ALIGNED16 __attribute__ ((aligned (16)))
 #endif

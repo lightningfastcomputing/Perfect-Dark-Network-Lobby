@@ -20,6 +20,7 @@
 #include "game/inv.h"
 #include "game/lv.h"
 #include "game/menu.h"
+#include "game/gamechat.h"
 #include "game/pdmode.h"
 #include "game/setup.h"
 #include "game/setuputils.h"
@@ -328,10 +329,12 @@ u32 netmsgClcChatWrite(struct netbuf *dst, const char *str)
 
 u32 netmsgClcChatRead(struct netbuf *src, struct netclient *srccl)
 {
-	char tmp[1024];
 	const char *msg = netbufReadStr(src);
 	if (msg && !src->error) {
-		sysLogPrintf(LOG_CHAT, "%s", msg);
+		sysLogPrintf(LOG_CHAT | LOGFLAG_NOCON, "%s", msg);
+		if (g_Vars.currentplayer && !g_MainIsEndscreen) {
+			gameChatShowMessage(msg);
+		}
 		netbufStartWrite(&g_NetMsgRel);
 		netmsgSvcChatWrite(&g_NetMsgRel, msg);
 		netSend(NULL, &g_NetMsgRel, true, NETCHAN_DEFAULT);
@@ -518,10 +521,12 @@ u32 netmsgSvcChatWrite(struct netbuf *dst, const char *str)
 
 u32 netmsgSvcChatRead(struct netbuf *src, struct netclient *srccl)
 {
-	char tmp[1024];
 	const char *msg = netbufReadStr(src);
 	if (msg && !src->error) {
-		sysLogPrintf(LOG_CHAT, "%s", msg);
+		sysLogPrintf(LOG_CHAT | LOGFLAG_NOCON, "%s", msg);
+		if (g_Vars.currentplayer && !g_MainIsEndscreen) {
+			gameChatShowMessage(msg);
+		}
 	}
 	return src->error;
 }

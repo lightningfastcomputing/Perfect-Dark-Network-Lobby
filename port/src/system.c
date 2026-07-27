@@ -6,21 +6,26 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
-#include <strings.h>
+#include "platform.h"
+#if defined(_WIN32)
+#define strcasecmp _stricmp
 #include <time.h>
+#else
+#include <strings.h>
 #include <sys/time.h>
+#include <time.h>
+#endif
 #include <SDL.h>
 #include <PR/ultratypes.h>
-#include "platform.h"
 #include "console.h"
 #include "system.h"
 
-#ifdef PLATFORM_WIN32
+#if defined(_WIN32)
 
 #include <windows.h>
 
 // on win32 we use waitable timers instead of nanosleep
-typedef HANDLE WINAPI (*CREATEWAITABLETIMEREXAFN)(LPSECURITY_ATTRIBUTES, LPCSTR, DWORD, DWORD);
+typedef HANDLE (WINAPI *CREATEWAITABLETIMEREXAFN)(LPSECURITY_ATTRIBUTES, LPCSTR, DWORD, DWORD);
 static HANDLE timer;
 static CREATEWAITABLETIMEREXAFN pfnCreateWaitableTimerExA;
 
@@ -28,8 +33,8 @@ static CREATEWAITABLETIMEREXAFN pfnCreateWaitableTimerExA;
 #define DO_YIELD() YieldProcessor()
 
 // ask system for high performance GPU, if any
-__attribute__((dllexport)) u32 NvOptimusEnablement = 1;
-__attribute__((dllexport)) u32 AmdPowerXpressRequestHighPerformance = 1;
+__declspec(dllexport) u32 NvOptimusEnablement = 1;
+__declspec(dllexport) u32 AmdPowerXpressRequestHighPerformance = 1;
 
 #else
 
@@ -160,9 +165,21 @@ s32 sysArgGetInt(const char *arg, s32 defval)
 
 u64 sysGetMicroseconds(void)
 {
+#ifdef PLATFORM_WIN32
+	LARGE_INTEGER counter;
+	static LARGE_INTEGER freq;
+
+	if (freq.QuadPart == 0) {
+		QueryPerformanceFrequency(&freq);
+	}
+
+	QueryPerformanceCounter(&counter);
+	return (u64)((counter.QuadPart * USEC_IN_SEC) / freq.QuadPart) - startTick;
+#else
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
 	return ((u64)tv.tv_sec * USEC_IN_SEC + (u64)tv.tv_usec) - startTick;
+#endif
 }
 
 float sysGetSeconds(void)

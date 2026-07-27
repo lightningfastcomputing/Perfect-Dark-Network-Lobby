@@ -816,8 +816,8 @@ static u32 convertContent(u8 *dst, u8 *src, u32 src_file_len)
 			{
 				struct generic_rodata_type19 *src_type19 = src_thing;
 				struct generic_rodata_type19 *dst_type19 = dst_thing;
-				u32 *src_vertices = src_thing + sizeof(u32);
-				u32 *dst_vertices = dst_thing + sizeof(u32);
+				u32 *src_vertices = (u32 *)((u8 *)src_thing + sizeof(u32));
+				u32 *dst_vertices = (u32 *)((u8 *)dst_thing + sizeof(u32));
 				int num_vertices = PD_BE32(src_type19->numvertices);
 
 				dst_type19->numvertices = (num_vertices);

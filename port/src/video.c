@@ -528,7 +528,7 @@ void videoShutdown(void)
 	free(vidModes);
 }
 
-PD_CONSTRUCTOR static void videoConfigInit(void)
+PD_CONSTRUCTOR_FUNC(videoConfigInit)
 {
 	configRegisterInt("Video.DefaultFullscreen", &vidFullscreen, 0, 1);
 	configRegisterInt("Video.DefaultMaximize", &vidMaximize, 0, 1);

@@ -6,6 +6,7 @@ extern "C" {
 #endif
 
 #include <PR/ultratypes.h>
+#include "platform.h"
 
 #define LOGFLAG_NOCON (1 << 6)
 #define LOGFLAG_SHOWMSG (1 << 7)
@@ -27,7 +28,7 @@ s32 sysArgGetInt(const char *arg, s32 defval);
 u64 sysGetMicroseconds(void);
 f32 sysGetSeconds(void);
 
-void sysFatalError(const char *fmt, ...) __attribute__((noreturn));
+PD_NORETURN void sysFatalError(const char *fmt, ...);
 
 s32 sysLogIsOpen(void);
 void sysLogOpen(const char *fname);

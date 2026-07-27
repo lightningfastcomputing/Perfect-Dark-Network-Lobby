@@ -1162,7 +1162,7 @@ void netChatPrintf(struct netclient *dst, const char *fmt, ...)
 	buf.size = sizeof(bufdata);
 
 	if (g_NetMode == NETMODE_SERVER) {
-		sysLogPrintf(LOG_CHAT, "%s", tmp);
+		sysLogPrintf(LOG_CHAT | LOGFLAG_NOCON, "%s", tmp);
 		netmsgSvcChatWrite(&buf, tmp);
 	} else {
 		netmsgClcChatWrite(&buf, tmp);
@@ -1207,7 +1207,7 @@ Gfx *netDebugRender(Gfx *gdl)
 	return gdl;
 }
 
-PD_CONSTRUCTOR static void netConfigInit(void)
+PD_CONSTRUCTOR_FUNC(netConfigInit)
 {
 	configRegisterUInt("Net.LerpTicks", &g_NetInterpTicks, 0, 600);
 

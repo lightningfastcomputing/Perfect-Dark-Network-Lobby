@@ -1505,7 +1505,7 @@ u32 inputGetKeyModState(void)
 	return SDL_GetModState();
 }
 
-PD_CONSTRUCTOR static void inputConfigInit(void)
+PD_CONSTRUCTOR_FUNC(inputConfigInit)
 {
 	configRegisterInt("Input.MouseEnabled", &mouseEnabled, 0, 1);
 	configRegisterInt("Input.MouseLockMode", &mouseLockMode, MLOCK_OFF, MLOCK_AUTO);

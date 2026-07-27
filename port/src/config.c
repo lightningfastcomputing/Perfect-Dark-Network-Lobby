@@ -1,6 +1,10 @@
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+#define strncasecmp _strnicmp
+#else
 #include <strings.h>
+#endif
 #include <ctype.h>
 #include <PR/ultratypes.h>
 #include "fs.h"

@@ -173,7 +173,7 @@ int main(int argc, const char **argv)
 	return 0;
 }
 
-PD_CONSTRUCTOR static void gameConfigInit(void)
+PD_CONSTRUCTOR_FUNC(gameConfigInit)
 {
 	configRegisterInt("Game.MemorySize", &g_OsMemSizeMb, 4, 2048);
 	configRegisterInt("Game.CenterHUD", &g_HudCenter, 0, 2);

@@ -15,8 +15,10 @@
 #include "game/quaternion.h"
 #include "game/bondgun.h"
 #include "game/game_0b0fd0.h"
+#include "game/gamechat.h"
 #include "game/tex.h"
 #include "game/camera.h"
+#include "game/menu.h"
 #include "game/player.h"
 #include "game/bondcutscene.h"
 #include "game/bondhead.h"
@@ -985,6 +987,10 @@ void bmoveProcessInput(bool allowc1x, bool allowc1y, bool allowc1buttons, bool i
 	}
 	// always pause with ESC
 	if (allowc1buttons && g_Vars.currentplayer->isdead == false && g_Vars.currentplayer->pausemode == PAUSEMODE_UNPAUSED) {
+		if (inputKeyJustPressed(VK_RETURN) && !currentPlayerIsMenuOpenInSoloOrMp()) {
+			gameChatOpen();
+		}
+
 		if (inputKeyJustPressed(VK_ESCAPE)) {
 			c1buttonsthisframe |= START_BUTTON;
 		}
@@ -2547,6 +2553,10 @@ void bmoveTick(bool allowc1x, bool allowc1y, bool allowc1buttons, bool ignorec2)
 	} else if (g_Vars.currentplayer->bondmovemode == MOVEMODE_WALK) {
 		bwalkTick();
 	}
+
+#ifndef PLATFORM_N64
+	gameChatTick();
+#endif
 
 	// Update footstep sounds
 	if ((g_Vars.currentplayer->bondmovemode == MOVEMODE_WALK || g_Vars.currentplayer->bondmovemode == MOVEMODE_GRAB)

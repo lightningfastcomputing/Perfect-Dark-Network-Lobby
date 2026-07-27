@@ -1,6 +1,6 @@
 #include <stdio.h>
+#include <cstring>
 #include <SDL.h>
-#include <unistd.h>
 #include <time.h>
 
 #include "platform.h"

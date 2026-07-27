@@ -162,45 +162,49 @@ include_directories("${CMAKE_SOURCE_DIR}/src/lib/ultra/audio")
 include_directories("${CMAKE_SOURCE_DIR}/port/include")
 include_directories("${CMAKE_BINARY_DIR}/port/include")
 
-# Set Release optimization to -Og until I fix the -O2 issues
-if(NOT (CMAKE_BUILD_TYPE STREQUAL "Debug"))
-  add_compile_options(-Og)
+if(MSVC)
+  add_compile_options(/FIversioninfo.h /J /Oi-)
+else()
+  # Set Release optimization to -Og until I fix the -O2 issues
+  if(NOT (CMAKE_BUILD_TYPE STREQUAL "Debug"))
+    add_compile_options(-Og)
+  endif()
+
+  # Common CFLAGS
+  add_compile_options(
+    -fno-inline-functions
+    -fno-strict-aliasing
+    -funsigned-char
+    -fwrapv
+    -include "versioninfo.h"
+  )
+
+  # Common warning flags
+  add_compile_options(
+    -Wall
+    -Wno-address
+    -Wno-int-in-bool-context
+    -Wno-misleading-indentation
+    -Wno-missing-braces
+    -Wno-multichar
+    -Wno-tautological-compare
+    -Wno-unused-but-set-variable
+    -Wno-unused-value
+    -Wno-unused-variable
+  )
+
+  # C specific flags
+  add_compile_options($<$<COMPILE_LANGUAGE:C>:-Wno-pointer-sign>)
+
+  # C++ specific flags
+  add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wno-unused-function>)
 endif()
-
-# Common CFLAGS
-add_compile_options(
-  -fno-inline-functions
-  -fno-strict-aliasing
-  -funsigned-char
-  -fwrapv
-  -include "versioninfo.h"
-)
-
-# Common warning flags
-add_compile_options(
-  -Wall
-  -Wno-address
-  -Wno-int-in-bool-context
-  -Wno-misleading-indentation
-  -Wno-missing-braces
-  -Wno-multichar
-  -Wno-tautological-compare
-  -Wno-unused-but-set-variable
-  -Wno-unused-value
-  -Wno-unused-variable
-)
-
-# C specific flags
-add_compile_options($<$<COMPILE_LANGUAGE:C>:-Wno-pointer-sign>)
-
-# C++ specific flags
-add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wno-unused-function>)
 
 # Platform-specific flags
 if (APPLE)
   # Make it look for libs in the executable folder manually since CMake's rpath system is wack
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -rpath @executable_path")
-else()
+elseif(NOT MSVC)
   # This warning is not recognized by XCode/Clang for some reason.
   add_compile_options(-Wno-format-truncation)
 endif()

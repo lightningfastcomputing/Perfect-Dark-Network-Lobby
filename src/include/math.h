@@ -2,7 +2,11 @@
 #define IN_MATH_H
 
 #ifndef PLATFORM_N64
+#if defined(_MSC_VER) && defined(__cplusplus)
+#include <corecrt_math.h>
+#elif !defined(_MSC_VER)
 #include_next <math.h>
+#endif
 #undef M_PI
 #undef M_TAU
 // HACK: for some reason the #include_next above doesn't really do anything, so

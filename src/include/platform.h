@@ -1,6 +1,11 @@
 #ifndef _IN_PLATFORM_H
 #define _IN_PLATFORM_H
 
+#if defined(_MSC_VER)
+#include <intrin.h>
+#pragma section(".CRT$XCU", read)
+#endif
+
 // detect OS
 #if defined(_WIN32)
 	#define PLATFORM_WIN32 1
@@ -36,7 +41,9 @@
 #endif
 
 // detect endianness
-#if defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__)
+#if defined(_MSC_VER)
+	#define PLATFORM_LITTLE_ENDIAN 1
+#elif defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__)
 	#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
 		#define PLATFORM_BIG_ENDIAN 1
 	#else
@@ -50,7 +57,11 @@
 
 // byteswap macros
 
-#if defined(__GNUC__) || defined(__clang__)
+#if defined(_MSC_VER)
+	#define PD_BSWAP16(x) _byteswap_ushort(x)
+	#define PD_BSWAP32(x) _byteswap_ulong(x)
+	#define PD_BSWAP64(x) _byteswap_uint64(x)
+#elif defined(__GNUC__) || defined(__clang__)
 	#define PD_BSWAP16(x) __builtin_bswap16(x)
 	#define PD_BSWAP32(x) __builtin_bswap32(x)
 	#define PD_BSWAP64(x) __builtin_bswap64(x)
@@ -84,8 +95,19 @@
 #endif
 
 // module constructor function attribute
-#if defined(__GNUC__) || defined(__clang__)
+#if defined(_MSC_VER)
+	typedef void (__cdecl *pd_constructor_func)(void);
+	#define PD_CONSTRUCTOR_IMPL2(func, line) \
+		static void __cdecl func(void); \
+		__declspec(allocate(".CRT$XCU")) pd_constructor_func func##_ctor_##line = func; \
+		static void __cdecl func(void)
+	#define PD_CONSTRUCTOR_IMPL1(func, line) PD_CONSTRUCTOR_IMPL2(func, line)
+	#define PD_CONSTRUCTOR_FUNC(func) PD_CONSTRUCTOR_IMPL1(func, __LINE__)
+	#define PD_NORETURN __declspec(noreturn)
+#elif defined(__GNUC__) || defined(__clang__)
+	#define PD_CONSTRUCTOR_FUNC(func) __attribute__((constructor)) static void func(void)
 	#define PD_CONSTRUCTOR __attribute__((constructor))
+	#define PD_NORETURN __attribute__((noreturn))
 #else
 	#error "Implement PD_CONSTRUCTOR macro for your compiler."
 #endif
