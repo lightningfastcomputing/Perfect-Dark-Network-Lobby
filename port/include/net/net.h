@@ -5,7 +5,7 @@
 #include "constants.h"
 #include "net/netbuf.h"
 
-#define NET_PROTOCOL_VER 32
+#define NET_PROTOCOL_VER 33
 #define NET_QUERY_MAGIC "PDQM\x01"
 
 #define NET_MAX_CLIENTS MAX_PLAYERS
@@ -15,6 +15,7 @@
 #define NET_BUFSIZE 1440
 
 #define NET_DEFAULT_PORT 27100
+#define NET_SNAPSHOT_COUNT 8
 
 #define NET_NULL_CLIENT 0xFF
 #define NET_NULL_PROP 0
@@ -134,6 +135,7 @@ extern u64 g_NetRngSeeds[2];
 extern u32 g_NetRngLatch;
 
 extern u32 g_NetInterpTicks;
+extern s32 g_NetChrInterp;
 extern u32 g_NetServerPort;
 extern char g_NetLastJoinAddr[NET_MAX_ADDR + 1];
 
@@ -147,7 +149,23 @@ extern struct netclient *g_NetLocalClient;
 extern struct netbuf g_NetMsg;
 extern struct netbuf g_NetMsgRel;
 
+struct netchrpose {
+	struct coord pos;
+	f32 yrot;
+	f32 angleoffset;
+	f32 aimupback;
+	f32 aimsideback;
+	f32 aimuplshoulder;
+	f32 aimuprshoulder;
+	s16 animnum;
+	s16 framea;
+	f32 speed;
+	RoomNum rooms[8];
+};
+
 const char *netFormatClientAddr(const struct netclient *cl);
+void netChrRecordSnapshot(struct chrdata *chr, const struct netchrpose *pose);
+void netChrInterpolate(struct chrdata *chr);
 
 void netInit(void);
 s32 netDisconnect(void);

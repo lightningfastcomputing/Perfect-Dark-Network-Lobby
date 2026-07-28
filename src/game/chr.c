@@ -1137,6 +1137,12 @@ void chrInit(struct prop *prop, u8 *ailist)
 
 	chr->shotbondsum = 0;
 	chr->damage = 0;
+#ifndef PLATFORM_N64
+	chr->netsnaphead = 0;
+	for (i = 0; i < ARRAYCOUNT(chr->netsnap); i++) {
+		chr->netsnap[i].tick = 0;
+	}
+#endif
 	chr->sumground = 0;
 	chr->manground = 0;
 	chr->ground = 0;
@@ -2414,6 +2420,10 @@ s32 chrTick(struct prop *prop)
 	}
 
 #ifndef PLATFORM_N64
+	if (chr->aibot && prop->syncid) {
+		netChrInterpolate(chr);
+	}
+
 	netcoopreplica = g_NetMode == NETMODE_CLIENT
 			&& g_NetGameMode == NETGAMEMODE_COOP
 			&& prop->type == PROPTYPE_CHR

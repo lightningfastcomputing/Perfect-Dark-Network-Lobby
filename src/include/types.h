@@ -1348,6 +1348,23 @@ struct chrdata {
 	/*0x362*/ u8 drcarollimage_left : 4;
 	/*0x362*/ u8 drcarollimage_right : 4;
 	/*0x364*/ struct prop *lift;
+#ifndef PLATFORM_N64
+	struct {
+		u32 tick;
+		struct coord pos;
+		f32 yrot;
+		f32 angleoffset;
+		f32 aimupback;
+		f32 aimsideback;
+		f32 aimuplshoulder;
+		f32 aimuprshoulder;
+		s16 animnum;
+		s16 framea;
+		f32 speed;
+		RoomNum rooms[8];
+	} netsnap[8];
+	u32 netsnaphead;
+#endif
 };
 
 // This appears to be misnamed. Not only is it projectiles such as grenades and

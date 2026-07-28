@@ -146,7 +146,7 @@ struct netbotvisualstate {
 static struct netbotvisualstate
 		g_NetBotVisualStates[MAX_BOTS + NET_MAX_CHR_VISUAL_STATES];
 
-static void netmsgSetBotVisualPosition(
+void netmsgSetBotVisualPosition(
 		u8 botnum,
 		struct chrdata *chr,
 		const struct coord *visualpos)
@@ -2068,6 +2068,10 @@ u32 netmsgSvcBotStateWrite(struct netbuf *dst, struct chrdata *chr, u8 botnum)
 	const f32 lookangle = chrGetInverseTheta(chr);
 	const f32 modelroty = modelGetChrRotY(chr->model);
 	const f32 angleoffset = chr->aibot ? chr->aibot->angleoffset : 0.0f;
+	const f32 aimupback = chr->aimupback;
+	const f32 aimsideback = chr->aimsideback;
+	const f32 aimuplshoulder = chr->aimuplshoulder;
+	const f32 aimuprshoulder = chr->aimuprshoulder;
 	const s16 animnum = chr->model->anim
 	                ? chr->model->anim->animnum
 	                : 0;
@@ -2106,6 +2110,10 @@ const u8 firingmask =
 	netbufWriteF32(dst, lookangle);
 	netbufWriteF32(dst, modelroty);
 	netbufWriteF32(dst, angleoffset);
+	netbufWriteF32(dst, aimupback);
+	netbufWriteF32(dst, aimsideback);
+	netbufWriteF32(dst, aimuplshoulder);
+	netbufWriteF32(dst, aimuprshoulder);
 	netbufWriteS16(dst, animnum);
 	netbufWriteF32(dst, animframe);
 	netbufWriteF32(dst, animspeed);
@@ -2154,6 +2162,10 @@ u32 netmsgSvcBotStateRead(struct netbuf *src, struct netclient *srccl)
 	const f32 lookangle = netbufReadF32(src);
 	const f32 modelroty = netbufReadF32(src);
 	const f32 angleoffset = netbufReadF32(src);
+	const f32 aimupback = netbufReadF32(src);
+	const f32 aimsideback = netbufReadF32(src);
+	const f32 aimuplshoulder = netbufReadF32(src);
+	const f32 aimuprshoulder = netbufReadF32(src);
 	const s16 animnum = netbufReadS16(src);
 	const f32 animframe = netbufReadF32(src);
 	const f32 animspeed = netbufReadF32(src);
@@ -2213,6 +2225,7 @@ u32 netmsgSvcBotStateRead(struct netbuf *src, struct netclient *srccl)
 			hostactiontype == ACT_DIE || hostactiontype == ACT_DEAD;
 	const bool clientdead =
 			chr->actiontype == ACT_DIE || chr->actiontype == ACT_DEAD;
+	struct netchrpose pose;
 
 	/*
 	 * The authoritative host reuses the same bot after botSpawn(chr, true).
@@ -2297,6 +2310,23 @@ botSpawn(chr, true);
 		return src->error;
 	}
 
+	pose.pos = pos;
+	pose.yrot = bodyroty;
+	pose.angleoffset = angleoffset;
+	pose.aimupback = aimupback;
+	pose.aimsideback = aimsideback;
+	pose.aimuplshoulder = aimuplshoulder;
+	pose.aimuprshoulder = aimuprshoulder;
+	pose.animnum = animnum;
+	pose.framea = (s16)animframe;
+	pose.speed = animspeed;
+
+	for (s32 ri = 0; ri < ARRAYCOUNT(pose.rooms); ri++) {
+		pose.rooms[ri] = rooms[ri];
+	}
+
+	netChrRecordSnapshot(chr, &pose);
+
 	/*
 	 * Keep all three facing layers aligned. The client still runs the outer
 	 * bot presentation tick, so updating only the model rotation allows stale
@@ -2308,11 +2338,20 @@ netmsgSetBotVisualPosition(botnum, chr, &visualpos);
  * Gameplay authority still uses the host prop position. Rendering uses
  * visualpos through the client-only chrRender override.
  */
-chrSetPos(chr, &pos, rooms, lookangle, false);
+	chrSetPos(chr, &pos, rooms, lookangle, false);
 	chrSetRotY(chr, bodyroty);
 	chrSetLookAngle(chr, lookangle);
 	modelSetChrRotY(chr->model, modelroty);
 	chr->damage = hostdamage;
+	chr->aimupback = aimupback;
+	chr->aimsideback = aimsideback;
+	chr->aimuplshoulder = aimuplshoulder;
+	chr->aimuprshoulder = aimuprshoulder;
+	chr->aimendback = aimupback;
+	chr->aimendsideback = aimsideback;
+	chr->aimendlshoulder = aimuplshoulder;
+	chr->aimendrshoulder = aimuprshoulder;
+	chr->aimendcount = 0;
 
 	/*
 	 * Client replicas do not run bot AI, so copy the host's selected

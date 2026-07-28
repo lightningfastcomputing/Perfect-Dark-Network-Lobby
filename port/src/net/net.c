@@ -17,10 +17,13 @@
 #include "game/bondgun.h"
 #include "game/game_1531a0.h"
 #include "game/game_0b0fd0.h"
+#include "game/chraction.h"
 #include "game/title.h"
 #include "game/menu.h"
 #include "game/pdmode.h"
 #include "game/mplayer/mplayer.h"
+#include "game/prop.h"
+#include "lib/anim.h"
 #include "lib/main.h"
 #include "lib/vi.h"
 #include "config.h"
@@ -47,6 +50,7 @@ u32 g_NetClientInRate = 128 * 1024;
 u32 g_NetClientOutRate = 128 * 1024;
 
 u32 g_NetInterpTicks = 3;
+s32 g_NetChrInterp = 1;
 char g_NetLastJoinAddr[NET_MAX_ADDR + 1] = "127.0.0.1:27100";
 
 u32 g_NetTick = 0;
@@ -79,6 +83,7 @@ static u32 g_NetNextUpdate = 0;
 
 static u32 g_NetReliableFrameLen = 0;
 static u32 g_NetUnreliableFrameLen = 0;
+static f32 g_NetChrSnapInterval = 1.0f;
 
 static s32 netParseAddr(ENetAddress *out, const char *str)
 {
@@ -1198,6 +1203,207 @@ void netChat(struct netclient *dst, const char *text)
 {
 	if (g_NetMode && g_NetLocalClient) {
 		netChatPrintf(dst, "%s: %s", g_NetLocalClient->settings.name, text);
+	}
+}
+
+static f32 netLerpf(f32 a, f32 b, f32 t)
+{
+	return a + (b - a) * t;
+}
+
+static f32 netAngleLerp(f32 a, f32 b, f32 t)
+{
+	const f32 two_pi = 6.2831853071795865f;
+	f32 d = b - a;
+
+	while (d > two_pi * 0.5f) {
+		d -= two_pi;
+	}
+
+	while (d < -two_pi * 0.5f) {
+		d += two_pi;
+	}
+
+	return a + d * t;
+}
+
+static s32 netChrRoomsEqual(const RoomNum *ra, const RoomNum *rb)
+{
+	for (s32 i = 0; i < 8; i++) {
+		if (ra[i] != rb[i]) {
+			return 0;
+		}
+
+		if (ra[i] == -1) {
+			break;
+		}
+	}
+
+	return 1;
+}
+
+void netChrRecordSnapshot(struct chrdata *chr, const struct netchrpose *pose)
+{
+	if (!chr || !pose) {
+		return;
+	}
+
+	if (chr->netsnaphead >= NET_SNAPSHOT_COUNT) {
+		chr->netsnaphead = 0;
+	}
+
+	{
+		const u32 prev = chr->netsnap[chr->netsnaphead].tick;
+
+		if (prev && g_NetTick > prev) {
+			const f32 gap = (f32)(g_NetTick - prev);
+
+			if (gap < 60.0f) {
+				g_NetChrSnapInterval += (gap - g_NetChrSnapInterval) * 0.1f;
+			}
+		}
+	}
+
+	const u32 head = (chr->netsnaphead + 1) % NET_SNAPSHOT_COUNT;
+	chr->netsnaphead = head;
+	chr->netsnap[head].tick = g_NetTick ? g_NetTick : 1u;
+	chr->netsnap[head].pos = pose->pos;
+	chr->netsnap[head].yrot = pose->yrot;
+	chr->netsnap[head].angleoffset = pose->angleoffset;
+	chr->netsnap[head].aimupback = pose->aimupback;
+	chr->netsnap[head].aimsideback = pose->aimsideback;
+	chr->netsnap[head].aimuplshoulder = pose->aimuplshoulder;
+	chr->netsnap[head].aimuprshoulder = pose->aimuprshoulder;
+	chr->netsnap[head].animnum = pose->animnum;
+	chr->netsnap[head].framea = pose->framea;
+	chr->netsnap[head].speed = pose->speed;
+
+	for (s32 i = 0; i < 8; i++) {
+		chr->netsnap[head].rooms[i] = pose->rooms[i];
+	}
+}
+
+void netChrInterpolate(struct chrdata *chr)
+{
+	if (!g_NetChrInterp || g_NetMode != NETMODE_CLIENT || !chr || !chr->prop || !chr->aibot) {
+		return;
+	}
+
+	const u32 head = chr->netsnaphead;
+
+	if (head >= NET_SNAPSHOT_COUNT || !chr->netsnap[head].tick) {
+		return;
+	}
+
+	u32 interval = (u32)(g_NetChrSnapInterval + 0.5f);
+
+	if (interval < 1u) {
+		interval = 1u;
+	}
+
+	const u32 delay = g_NetInterpTicks + interval;
+	const u32 desired = (g_NetTick > delay) ? (g_NetTick - delay) : 0u;
+	s32 newer = -1;
+	s32 older = -1;
+
+	for (s32 i = 0; i < NET_SNAPSHOT_COUNT; i++) {
+		const s32 idx = (s32)((head + NET_SNAPSHOT_COUNT - (u32)i) % NET_SNAPSHOT_COUNT);
+
+		if (!chr->netsnap[idx].tick) {
+			break;
+		}
+
+		if (chr->netsnap[idx].tick >= desired) {
+			newer = idx;
+		} else {
+			older = idx;
+			break;
+		}
+	}
+
+	struct netchrpose out;
+	bool animstable = true;
+
+	if (newer >= 0 && older >= 0) {
+		const u32 span = chr->netsnap[newer].tick - chr->netsnap[older].tick;
+		const f32 t = (span > 0) ? (f32)(desired - chr->netsnap[older].tick) / (f32)span : 1.0f;
+
+		out.pos.x = netLerpf(chr->netsnap[older].pos.x, chr->netsnap[newer].pos.x, t);
+		out.pos.y = netLerpf(chr->netsnap[older].pos.y, chr->netsnap[newer].pos.y, t);
+		out.pos.z = netLerpf(chr->netsnap[older].pos.z, chr->netsnap[newer].pos.z, t);
+		out.yrot = netAngleLerp(chr->netsnap[older].yrot, chr->netsnap[newer].yrot, t);
+		out.angleoffset = netAngleLerp(chr->netsnap[older].angleoffset, chr->netsnap[newer].angleoffset, t);
+		out.aimupback = netLerpf(chr->netsnap[older].aimupback, chr->netsnap[newer].aimupback, t);
+		out.aimsideback = netLerpf(chr->netsnap[older].aimsideback, chr->netsnap[newer].aimsideback, t);
+		out.aimuplshoulder = netLerpf(chr->netsnap[older].aimuplshoulder, chr->netsnap[newer].aimuplshoulder, t);
+		out.aimuprshoulder = netLerpf(chr->netsnap[older].aimuprshoulder, chr->netsnap[newer].aimuprshoulder, t);
+		out.animnum = chr->netsnap[older].animnum;
+		out.framea = chr->netsnap[older].framea;
+		out.speed = netLerpf(chr->netsnap[older].speed, chr->netsnap[newer].speed, t);
+		animstable = chr->netsnap[newer].animnum == chr->netsnap[older].animnum;
+	} else {
+		const s32 src = (newer >= 0) ? newer : (s32)head;
+
+		out.pos = chr->netsnap[src].pos;
+		out.yrot = chr->netsnap[head].yrot;
+		out.angleoffset = chr->netsnap[head].angleoffset;
+		out.aimupback = chr->netsnap[head].aimupback;
+		out.aimsideback = chr->netsnap[head].aimsideback;
+		out.aimuplshoulder = chr->netsnap[head].aimuplshoulder;
+		out.aimuprshoulder = chr->netsnap[head].aimuprshoulder;
+		out.animnum = chr->netsnap[head].animnum;
+		out.framea = chr->netsnap[head].framea;
+		out.speed = chr->netsnap[head].speed;
+	}
+
+	chr->prop->pos = out.pos;
+	netmsgSetBotVisualPosition(chr->aibot->aibotnum, chr, &out.pos);
+
+	{
+		const s32 roomidx = (older >= 0) ? older : (newer >= 0 ? newer : (s32)head);
+		RoomNum *wantrooms = chr->netsnap[roomidx].rooms;
+
+		if (!netChrRoomsEqual(wantrooms, chr->prop->rooms)) {
+			if (chr->prop->active) {
+				propDeregisterRooms(chr->prop);
+			}
+
+			roomsCopy(wantrooms, chr->prop->rooms);
+
+			if (chr->prop->active) {
+				propRegisterRooms(chr->prop);
+			}
+		}
+	}
+
+	if (chr->model) {
+		modelSetRootPosition(chr->model, &out.pos);
+		modelSetChrRotY(chr->model, out.yrot);
+	}
+
+	chrSetRotY(chr, out.yrot);
+	chr->aibot->roty = out.yrot;
+	chr->aibot->angleoffset = out.angleoffset;
+	chr->aimupback = out.aimupback;
+	chr->aimsideback = out.aimsideback;
+	chr->aimuplshoulder = out.aimuplshoulder;
+	chr->aimuprshoulder = out.aimuprshoulder;
+	chr->aimendback = out.aimupback;
+	chr->aimendsideback = out.aimsideback;
+	chr->aimendlshoulder = out.aimuplshoulder;
+	chr->aimendrshoulder = out.aimuprshoulder;
+	chr->aimendcount = 0;
+
+	if (out.animnum > 0 && animHasFrames(out.animnum) && chr->model && chr->model->anim) {
+		chr->model->anim->flip = 0;
+
+		if (chr->model->anim->animnum != out.animnum
+				&& (animstable || chr->model->anim->animnum == 0)) {
+			modelSetAnimation(chr->model, out.animnum, 0, (f32)out.framea, out.speed, 16.0f);
+		} else {
+			chr->model->anim->playspeed = out.speed;
+			chr->model->anim->speed = out.speed;
+		}
 	}
 }
 
