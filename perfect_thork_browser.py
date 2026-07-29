@@ -28,7 +28,8 @@ def base_dir() -> Path:
 
 
 BASE_DIR = base_dir()
-GAME_EXE = BASE_DIR / "pd.x86_64.exe"
+COOP_EXE = BASE_DIR / "coop-pd.x86_64.exe"
+COMBAT_EXE = BASE_DIR / "combat-pd.x86_64.exe"
 CONFIG_FILE = BASE_DIR / "perfect_thork_settings.json"
 
 
@@ -74,6 +75,15 @@ def save_settings(values: dict) -> None:
         CONFIG_FILE.write_text(json.dumps(values, indent=2), encoding="utf-8")
     except OSError:
         pass
+
+
+def is_coop_mode(mode: str) -> bool:
+    mode_text = mode.strip().lower()
+    return mode_text.startswith("co-op") or mode_text.startswith("coop")
+
+
+def game_executable_for_mode(mode: str) -> Path:
+    return COOP_EXE if is_coop_mode(mode) else COMBAT_EXE
 
 
 class PerfectThork(tk.Tk):
@@ -268,9 +278,6 @@ class PerfectThork(tk.Tk):
         self.status.set(f"{len(servers)} public server(s)")
 
     def host_public(self) -> None:
-        if not GAME_EXE.is_file():
-            messagebox.showerror(APP_TITLE, f"Place this browser beside the game executable:\n{GAME_EXE}")
-            return
         server_name = simpledialog.askstring(APP_TITLE, "Public server name:", initialvalue=self.server_name.get(), parent=self)
         if not server_name:
             return
@@ -282,7 +289,11 @@ class PerfectThork(tk.Tk):
         self._remember()
         player_name = self.player.get().strip() or "Player"
         selected_mode = self.host_mode.get().strip() or DEFAULT_MODE
-        is_coop = selected_mode.lower().startswith("co-op") or selected_mode.lower().startswith("coop")
+        game_exe = game_executable_for_mode(selected_mode)
+        if not game_exe.is_file():
+            messagebox.showerror(APP_TITLE, f"Missing game executable for {selected_mode}:\n{game_exe}")
+            return
+        is_coop = is_coop_mode(selected_mode)
         payload = {
             "name": server_name,
             "host_name": player_name,
@@ -307,7 +318,7 @@ class PerfectThork(tk.Tk):
         threading.Thread(target=self._heartbeat_loop, daemon=True).start()
         try:
             subprocess.Popen([
-                str(GAME_EXE),
+                str(game_exe),
                 "--portable",
                 "--skip-intro",
                 "--host",
@@ -371,9 +382,6 @@ class PerfectThork(tk.Tk):
         if not selected:
             messagebox.showinfo(APP_TITLE, "Select a public server first.")
             return
-        if not GAME_EXE.is_file():
-            messagebox.showerror(APP_TITLE, f"Place this browser beside the game executable:\n{GAME_EXE}")
-            return
 
         server = self.server_rows[selected[0]]
         public_host = str(
@@ -404,10 +412,14 @@ class PerfectThork(tk.Tk):
         player_name = self.player.get().strip() or "Player"
         mode_text = str(server.get("mode", DEFAULT_MODE)).strip().lower()
         mode_arg = "coop" if "coop" in mode_text else "combat"
+        game_exe = game_executable_for_mode(str(server.get("mode", DEFAULT_MODE)))
+        if not game_exe.is_file():
+            messagebox.showerror(APP_TITLE, f"Missing game executable for {server.get('mode', DEFAULT_MODE)}:\n{game_exe}")
+            return
         try:
             subprocess.Popen(
                 [
-                    str(GAME_EXE),
+                    str(game_exe),
                     "--portable",
                     "--skip-intro",
                     "--connect",

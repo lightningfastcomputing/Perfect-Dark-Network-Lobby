@@ -1,100 +1,144 @@
-# Thorfect Dark — Network Cooperative Campaign WIP
+# Thorfect Dark
 
-This branch contains the latest work-in-progress implementation of network cooperative campaign play for the Perfect Dark PC port.
+Thorfect Dark is a Windows launcher and master-server bundle for the Perfect Dark PC port with experimental online play support.
 
-## Current Status
+This project currently ships:
 
-* Native green Network Lobby
-* Public master-server registry and lobby chat
-* Public server browser
-* Network cooperative campaign support
-* Carrington Villa is currently working
-* Chicago is currently broken
-* Packaged Windows game, browser, and master-server executables
-* Work in progress: expect crashes, synchronization issues, and mission-specific bugs
+* A public server browser
+* A master-server registry
+* Master lobby chat
+* Browser-based hosting and joining
+* Experimental cooperative campaign support
+* Experimental Combat Simulator support
+* A temporary dual-launcher setup that routes coop and combat to different game executables
 
-## Branch
+This is still experimental software. Expect crashes, desyncs, mission bugs, and mode-specific issues.
 
-```text
-cooperative-lobby-latest
-```
+## Current Build Behavior
+
+As of July 29, 2026, the browser uses two separate game executables:
+
+* `coop-pd.x86_64.exe` for all coop host and join actions
+* `combat-pd.x86_64.exe` for all Combat Simulator host and join actions
+
+This is an intentional temporary workaround. The browser selects the correct executable based on the hosted or joined mode so players can use one launcher even though a single game executable does not yet handle both modes reliably.
+
+## Included Files
+
+Top-level Windows launch files:
+
+* `perfect_thork_browser.exe` - public browser and launcher
+* `perfect_thork_master.exe` - master server registry and lobby chat server
+* `coop-pd.x86_64.exe` - coop-focused game executable
+* `combat-pd.x86_64.exe` - Combat Simulator-focused game executable
+
+The browser is the recommended way to launch and join games.
 
 ## Requirements
 
 * Windows 10 or Windows 11, 64-bit
 * Git for Windows
-* Microsoft Visual C++ x64 runtime
 * A legally obtained Perfect Dark NTSC-final ROM
 
-The ROM is **not included**.
+The ROM is not included.
 
-After downloading the branch, place your ROM at:
+Place your ROM at:
 
 ```text
 data\pd.ntsc-final.z64
 ```
 
-All players should use the same build and a compatible ROM.
+All players should use the same build and the same compatible ROM.
 
-## Recommended Install and Launch Command
+## Install
 
-Open PowerShell and run the following command:
+Open PowerShell and run:
 
 ```powershell
-$dir="$HOME\Thorfect-Dark-Coop"; $repo="https://github.com/lightningfastcomputing/Perfect-Dark-Network-Lobby.git"; $branch="cooperative-lobby-latest"; if(Test-Path "$dir\.git"){git -C "$dir" fetch origin "$branch"; if($LASTEXITCODE -ne 0){throw "Unable to fetch the repository."}; git -C "$dir" checkout -f -B "$branch" "origin/$branch"; if($LASTEXITCODE -ne 0){throw "Unable to check out the requested branch."}; git -C "$dir" reset --hard "origin/$branch"; if($LASTEXITCODE -ne 0){throw "Unable to update the installation."}}elseif(Test-Path "$dir"){throw "The destination already exists but is not a Git repository: $dir"}else{git clone --branch "$branch" --single-branch "$repo" "$dir"; if($LASTEXITCODE -ne 0){throw "Unable to clone the repository."}}; $data="$dir\data"; New-Item -ItemType Directory -Force "$data" | Out-Null; $rom="$data\pd.ntsc-final.z64"; if(Test-Path "$rom"){$exe="$dir\perfect_thork_browser.exe"; if(!(Test-Path "$exe")){throw "Executable not found: $exe"}; Start-Process -FilePath "$exe" -WorkingDirectory "$dir"}else{Write-Host "Place your legally obtained ROM at: $rom"; Start-Process -FilePath "explorer.exe" -ArgumentList "$data"}
+$dir="$HOME\Thorfect-Dark"; $repo="https://github.com/lightningfastcomputing/Perfect-Dark-Network-Lobby.git"; $branch="main"; if(Test-Path "$dir\.git"){git -C "$dir" fetch origin "$branch"; if($LASTEXITCODE -ne 0){throw "Unable to fetch the repository."}; git -C "$dir" checkout -f -B "$branch" "origin/$branch"; if($LASTEXITCODE -ne 0){throw "Unable to check out the requested branch."}; git -C "$dir" reset --hard "origin/$branch"; if($LASTEXITCODE -ne 0){throw "Unable to update the installation."}}elseif(Test-Path "$dir"){throw "The destination already exists but is not a Git repository: $dir"}else{git clone --branch "$branch" --single-branch "$repo" "$dir"; if($LASTEXITCODE -ne 0){throw "Unable to clone the repository."}}; $data="$dir\data"; New-Item -ItemType Directory -Force "$data" | Out-Null; $rom="$data\pd.ntsc-final.z64"; if(Test-Path "$rom"){$exe="$dir\perfect_thork_browser.exe"; if(!(Test-Path "$exe")){throw "Executable not found: $exe"}; Start-Process -FilePath "$exe" -WorkingDirectory "$dir"}else{Write-Host "Place your legally obtained ROM at: $rom"; Start-Process -FilePath "explorer.exe" -ArgumentList "$data"}
 ```
 
 This command:
 
-1. Clones the `cooperative-lobby-latest` branch when it is not already installed.
-2. Updates an existing installation to the latest published commit.
-3. Creates the required `data` directory.
-4. Launches the Thorfect Dark server browser when the ROM is present.
-5. Opens the ROM directory when the ROM is missing.
+1. Clones or updates the `main` branch.
+2. Creates the `data` directory if needed.
+3. Launches the browser when the ROM is present.
+4. Opens the ROM folder when the ROM is missing.
 
-The installation directory is:
-
-```text
-%USERPROFILE%\Thorfect-Dark-Coop
-```
-
-Place your legally obtained ROM at:
+Install location:
 
 ```text
-%USERPROFILE%\Thorfect-Dark-Coop\data\pd.ntsc-final.z64
+%USERPROFILE%\Thorfect-Dark
 ```
 
-After adding the ROM, run the same PowerShell command again.
+## Using the Browser
 
-## Run the Browser
+Launch:
 
-The browser is the recommended way to launch Thorfect Dark because it supplies the appropriate hosting and joining arguments to the game.
-
-This command installs or updates the branch and then launches the browser:
-
-```powershell
-$dir="$HOME\Thorfect-Dark-Coop"; $repo="https://github.com/lightningfastcomputing/Perfect-Dark-Network-Lobby.git"; $branch="cooperative-lobby-latest"; if(Test-Path "$dir\.git"){git -C "$dir" fetch origin "$branch"; if($LASTEXITCODE -ne 0){throw "Unable to fetch the repository."}; git -C "$dir" checkout -f -B "$branch" "origin/$branch"; if($LASTEXITCODE -ne 0){throw "Unable to check out the requested branch."}; git -C "$dir" reset --hard "origin/$branch"; if($LASTEXITCODE -ne 0){throw "Unable to update the installation."}}elseif(Test-Path "$dir"){throw "The destination already exists but is not a Git repository: $dir"}else{git clone --branch "$branch" --single-branch "$repo" "$dir"; if($LASTEXITCODE -ne 0){throw "Unable to clone the repository."}}; New-Item -ItemType Directory -Force "$dir\data" | Out-Null; $exe="$dir\perfect_thork_browser.exe"; if(!(Test-Path "$exe")){throw "Executable not found: $exe"}; Start-Process -FilePath "$exe" -WorkingDirectory "$dir"
+```text
+perfect_thork_browser.exe
 ```
+
+The browser lets you:
+
+* View public servers
+* Host a public coop game
+* Host a public Combat Simulator game
+* Join public servers
+* Chat in the master lobby
+* Prefer LAN routing automatically when the browser can confirm both players are on the same local network
+
+When hosting:
+
+* Select `Co-Op` to launch `coop-pd.x86_64.exe`
+* Select `Combat Simulator` to launch `combat-pd.x86_64.exe`
+
+When joining:
+
+* Joining a coop listing launches `coop-pd.x86_64.exe`
+* Joining a Combat Simulator listing launches `combat-pd.x86_64.exe`
+
+The browser also passes the correct host, join, player-name, port, and net-mode arguments automatically.
 
 ## Run the Game Directly
 
-This command installs or updates the branch and then launches the game executable directly:
+Direct launching is supported, but it bypasses the browser's automatic routing and host or join setup.
 
-```powershell
-$dir="$HOME\Thorfect-Dark-Coop"; $repo="https://github.com/lightningfastcomputing/Perfect-Dark-Network-Lobby.git"; $branch="cooperative-lobby-latest"; if(Test-Path "$dir\.git"){git -C "$dir" fetch origin "$branch"; if($LASTEXITCODE -ne 0){throw "Unable to fetch the repository."}; git -C "$dir" checkout -f -B "$branch" "origin/$branch"; if($LASTEXITCODE -ne 0){throw "Unable to check out the requested branch."}; git -C "$dir" reset --hard "origin/$branch"; if($LASTEXITCODE -ne 0){throw "Unable to update the installation."}}elseif(Test-Path "$dir"){throw "The destination already exists but is not a Git repository: $dir"}else{git clone --branch "$branch" --single-branch "$repo" "$dir"; if($LASTEXITCODE -ne 0){throw "Unable to clone the repository."}}; New-Item -ItemType Directory -Force "$dir\data" | Out-Null; $exe="$dir\pd.x86_64.exe"; if(!(Test-Path "$exe")){throw "Executable not found: $exe"}; Start-Process -FilePath "$exe" -WorkingDirectory "$dir"
+Coop executable:
+
+```text
+coop-pd.x86_64.exe
 ```
 
-Launching the game directly bypasses the server browser. Hosting and joining network games may require command-line arguments normally supplied by the browser.
+Combat executable:
+
+```text
+combat-pd.x86_64.exe
+```
+
+If you launch these directly, you may need to supply command-line arguments yourself depending on what you are testing.
 
 ## Run the Master Server
 
-This command installs or updates the branch and then launches the master-server executable:
+Launch:
 
-```powershell
-$dir="$HOME\Thorfect-Dark-Coop"; $repo="https://github.com/lightningfastcomputing/Perfect-Dark-Network-Lobby.git"; $branch="cooperative-lobby-latest"; if(Test-Path "$dir\.git"){git -C "$dir" fetch origin "$branch"; if($LASTEXITCODE -ne 0){throw "Unable to fetch the repository."}; git -C "$dir" checkout -f -B "$branch" "origin/$branch"; if($LASTEXITCODE -ne 0){throw "Unable to check out the requested branch."}; git -C "$dir" reset --hard "origin/$branch"; if($LASTEXITCODE -ne 0){throw "Unable to update the installation."}}elseif(Test-Path "$dir"){throw "The destination already exists but is not a Git repository: $dir"}else{git clone --branch "$branch" --single-branch "$repo" "$dir"; if($LASTEXITCODE -ne 0){throw "Unable to clone the repository."}}; $exe="$dir\perfect_thork_master.exe"; if(!(Test-Path "$exe")){throw "Executable not found: $exe"}; Start-Process -FilePath "$exe" -WorkingDirectory "$dir"
+```text
+perfect_thork_master.exe
 ```
 
-Most players do not need to operate their own master server.
+The master server provides:
+
+* Public server registration
+* Public server listing
+* Lobby chat
+* Basic server heartbeat tracking
+
+Default URLs:
+
+* Local machine: `http://127.0.0.1:8088`
+* Other LAN PCs: `http://<your-lan-ip>:8088`
+
+Most players do not need to run their own master server unless they are hosting a separate registry.
 
 ## Default Ports
 
@@ -103,13 +147,15 @@ Most players do not need to operate their own master server.
 | Master registry and lobby chat |      TCP |       `8088` |
 | Perfect Dark game traffic      |      UDP |      `27100` |
 
-A player hosting a public game will normally need to forward UDP port `27100` to the hosting computer.
+Windows Firewall may prompt the first time an executable is launched.
 
-A master-server operator will need to make TCP port `8088` publicly reachable.
+If you host public games from outside your LAN, you will usually need to forward UDP port `27100` to the host machine.
 
-Windows Firewall may also ask for permission the first time each executable is launched.
+If you run a public master server, you will need to make TCP port `8088` reachable.
 
-## Cooperative Testing
+## Current Status
+
+### Coop
 
 Current known campaign status:
 
@@ -119,41 +165,49 @@ Current known campaign status:
 | Chicago          | Broken                   |
 | Other missions   | Untested or experimental |
 
-For the most useful bug reports, include:
+### Combat Simulator
 
-* Host and client logs
-* Mission and difficulty
-* Number of connected players
-* Whether the problem occurred on the host, client, or both
-* The last objective or mission event completed
-* Exact steps needed to reproduce the problem
-* Any crash message or screenshot
+Combat Simulator netplay is also experimental. It may work for testing, but it still has known sync and gameplay issues inherited from the underlying network implementation.
 
-Relevant logs may include:
+### General
 
-```text
-pd-client.log
-pd-server.log
-```
+Expect:
+
+* Desyncs
+* Crashes
+* Incomplete mission scripting
+* Visual inconsistencies
+* Mode-specific bugs
+* Cases where one executable works better than the other
+
+## Config and Logs
+
+Common runtime files may include:
+
+* `pd.ini`
+* `perfect_thork_settings.json`
+* `pd.log`
+* `pd-client.log`
+
+These files can help when diagnosing launch, connection, or gameplay issues.
 
 ## Updating Later
 
-Run any of the PowerShell launch commands again.
+Run the install command again to update to the latest `main` branch commit.
 
-Each command fetches the newest version of `cooperative-lobby-latest` and resets the tracked installation files to the published branch state before launching the selected executable.
+That command resets tracked files to the published branch state before launching the browser. Keep backups of any local experiments you do not want overwritten.
 
-Tracked local modifications inside the installation directory will be discarded during an update.
+## Version Notes
 
-The ROM is an untracked file and will not normally be removed by these commands. Nevertheless, keeping a backup of your ROM is recommended.
+### July 29, 2026
 
-## Experimental Software Warning
-
-Thorfect Dark cooperative campaign support is under active development.
-
-Expect crashes, synchronization problems, incomplete mission scripting, visual inconsistencies, and mission-specific bugs. Progress in one mission does not guarantee that another mission will work.
+* Browser launcher updated to route by mode
+* Coop host and join now use `coop-pd.x86_64.exe`
+* Combat Simulator host and join now use `combat-pd.x86_64.exe`
+* README updated to reflect the full launcher and master-server workflow
 
 ## Disclaimer
 
-This is an experimental, fan-made networking modification. It is not affiliated with or endorsed by Rare, Nintendo, Microsoft, or the original Perfect Dark developers.
+This is an experimental fan-made networking modification. It is not affiliated with or endorsed by Rare, Nintendo, Microsoft, or the original Perfect Dark developers.
 
 A legally obtained Perfect Dark ROM is required and is not distributed by this repository.
