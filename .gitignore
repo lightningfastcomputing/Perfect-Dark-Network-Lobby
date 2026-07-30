@@ -2,6 +2,8 @@
 *.pyc
 *.dll
 *.exe
+!coop-pd.x86_64.exe
+!combat-pd.x86_64.exe
 pd.*.z64
 build
 .flatpak-builder
