@@ -2,17 +2,15 @@
 
 Thorfect Dark is a Windows launcher and master-server bundle for the Perfect Dark PC port with experimental online play support.
 
-This project currently ships:
+This project ships:
 
-* A public server browser
-* A master-server registry
-* Master lobby chat
+* Public server browser
+* Master-server registry
+* Lobby chat
 * Browser-based hosting and joining
-* Experimental cooperative campaign support
-* Experimental Combat Simulator support
-* A temporary dual-launcher setup that routes coop and combat to different game executables
-
-This is still experimental software. Expect crashes, desyncs, mission bugs, and mode-specific issues.
+* Cooperative campaign support
+* Combat Simulator support
+* Temporary dual-launcher routing for coop and combat
 
 ## Current Build Behavior
 
@@ -42,89 +40,58 @@ The browser is the recommended way to launch and join games.
 
 The ROM is not included.
 
-Place your ROM at:
-
 ```text
 data\pd.ntsc-final.z64
 ```
 
 All players should use the same build and the same compatible ROM.
 
-## Install
-
-Open PowerShell and run:
+## One-Line Browser Install And Run
 
 ```powershell
 $dir="$HOME\Thorfect-Dark"; $repo="https://github.com/lightningfastcomputing/Perfect-Dark-Network-Lobby.git"; $branch="main"; if(Test-Path "$dir\.git"){git -C "$dir" fetch origin "$branch"; if($LASTEXITCODE -ne 0){throw "Unable to fetch the repository."}; git -C "$dir" checkout -f -B "$branch" "origin/$branch"; if($LASTEXITCODE -ne 0){throw "Unable to check out the requested branch."}; git -C "$dir" reset --hard "origin/$branch"; if($LASTEXITCODE -ne 0){throw "Unable to update the installation."}}elseif(Test-Path "$dir"){throw "The destination already exists but is not a Git repository: $dir"}else{git clone --branch "$branch" --single-branch "$repo" "$dir"; if($LASTEXITCODE -ne 0){throw "Unable to clone the repository."}}; $data="$dir\data"; New-Item -ItemType Directory -Force "$data" | Out-Null; $rom="$data\pd.ntsc-final.z64"; if(Test-Path "$rom"){$exe="$dir\perfect_thork_browser.exe"; if(!(Test-Path "$exe")){throw "Executable not found: $exe"}; Start-Process -FilePath "$exe" -WorkingDirectory "$dir"}else{Write-Host "Place your legally obtained ROM at: $rom"; Start-Process -FilePath "explorer.exe" -ArgumentList "$data"}
 ```
 
-This command:
-
-1. Clones or updates the `main` branch.
-2. Creates the `data` directory if needed.
-3. Launches the browser when the ROM is present.
-4. Opens the ROM folder when the ROM is missing.
-
-Install location:
+Installs or updates to:
 
 ```text
 %USERPROFILE%\Thorfect-Dark
 ```
 
-## Using the Browser
+## One-Line Master Install And Run
 
-Launch:
-
-```text
-perfect_thork_browser.exe
+```powershell
+$dir="$HOME\Thorfect-Dark"; $repo="https://github.com/lightningfastcomputing/Perfect-Dark-Network-Lobby.git"; $branch="main"; if(Test-Path "$dir\.git"){git -C "$dir" fetch origin "$branch"; if($LASTEXITCODE -ne 0){throw "Unable to fetch the repository."}; git -C "$dir" checkout -f -B "$branch" "origin/$branch"; if($LASTEXITCODE -ne 0){throw "Unable to check out the requested branch."}; git -C "$dir" reset --hard "origin/$branch"; if($LASTEXITCODE -ne 0){throw "Unable to update the installation."}}elseif(Test-Path "$dir"){throw "The destination already exists but is not a Git repository: $dir"}else{git clone --branch "$branch" --single-branch "$repo" "$dir"; if($LASTEXITCODE -ne 0){throw "Unable to clone the repository."}}; $exe="$dir\perfect_thork_master.exe"; if(!(Test-Path "$exe")){throw "Executable not found: $exe"}; Start-Process -FilePath "$exe" -WorkingDirectory "$dir"
 ```
 
-The browser lets you:
+## Browser
 
-* View public servers
-* Host a public coop game
-* Host a public Combat Simulator game
-* Join public servers
-* Chat in the master lobby
-* Prefer LAN routing automatically when the browser can confirm both players are on the same local network
+The browser:
 
-When hosting:
+* Lists public servers
+* Hosts public coop or Combat Simulator sessions
+* Joins public servers
+* Provides lobby chat
+* Uses LAN routing automatically when possible
+* Passes the correct launch arguments automatically
 
-* Select `Co-Op` to launch `coop-pd.x86_64.exe`
-* Select `Combat Simulator` to launch `combat-pd.x86_64.exe`
+Hosting and joining route by mode:
 
-When joining:
-
-* Joining a coop listing launches `coop-pd.x86_64.exe`
-* Joining a Combat Simulator listing launches `combat-pd.x86_64.exe`
-
-The browser also passes the correct host, join, player-name, port, and net-mode arguments automatically.
+* `Co-Op` -> `coop-pd.x86_64.exe`
+* `Combat Simulator` -> `combat-pd.x86_64.exe`
 
 ## Run the Game Directly
 
-Direct launching is supported, but it bypasses the browser's automatic routing and host or join setup.
-
-Coop executable:
+Direct launch files:
 
 ```text
 coop-pd.x86_64.exe
-```
-
-Combat executable:
-
-```text
 combat-pd.x86_64.exe
 ```
 
-If you launch these directly, you may need to supply command-line arguments yourself depending on what you are testing.
+Direct launching bypasses the browser's automatic routing and launch arguments.
 
-## Run the Master Server
-
-Launch:
-
-```text
-perfect_thork_master.exe
-```
+## Master Server
 
 The master server provides:
 
@@ -161,24 +128,14 @@ Current known campaign status:
 
 | Mission          | Status                   |
 | ---------------- | ------------------------ |
+| DataDyne         | Working                  |
 | Carrington Villa | Working                  |
-| Chicago          | Broken                   |
-| Other missions   | Untested or experimental |
+| Chicago          | Working                  |
+| Other missions   | Untested                 |
 
 ### Combat Simulator
 
 Combat Simulator netplay is also experimental. It may work for testing, but it still has known sync and gameplay issues inherited from the underlying network implementation.
-
-### General
-
-Expect:
-
-* Desyncs
-* Crashes
-* Incomplete mission scripting
-* Visual inconsistencies
-* Mode-specific bugs
-* Cases where one executable works better than the other
 
 ## Config and Logs
 
@@ -190,12 +147,6 @@ Common runtime files may include:
 * `pd-client.log`
 
 These files can help when diagnosing launch, connection, or gameplay issues.
-
-## Updating Later
-
-Run the install command again to update to the latest `main` branch commit.
-
-That command resets tracked files to the published branch state before launching the browser. Keep backups of any local experiments you do not want overwritten.
 
 ## Version Notes
 
