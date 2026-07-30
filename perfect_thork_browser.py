@@ -16,9 +16,12 @@ from urllib.request import Request, urlopen
 APP_TITLE = "Thorfect Dark"
 DEFAULT_MASTER = "http://127.0.0.1:8088"
 DEFAULT_PORT = 27100
-HEARTBEAT_SECONDS = 15
+HEARTBEAT_SECONDS = 5
 CHAT_POLL_MS = 2000
 DEFAULT_MODE = "Co-Op"
+ACTIVE_REFRESH_MS = 1000
+INACTIVE_REFRESH_MS = 5000
+PROCESS_POLL_MS = 1000
 
 
 def base_dir() -> Path:
@@ -100,28 +103,51 @@ class PerfectThork(tk.Tk):
         self.server_name = tk.StringVar(value=str(settings["server_name"]))
         self.port = tk.StringVar(value=str(settings["port"]))
         self.advertised_ip = tk.StringVar(value=str(settings.get("advertised_ip", detect_lan_ip())))
-        self.host_mode = tk.StringVar(value=str(settings.get("mode", DEFAULT_MODE)))
         self.status = tk.StringVar(value="Ready")
         self.host_session: dict | None = None
         self.host_stop = threading.Event()
+        self.host_process: subprocess.Popen[str] | None = None
+        self.host_process_name = ""
+        self.host_public_name = ""
+        self.host_public_mode = DEFAULT_MODE
+        self.host_player_count = 1
+        self.host_max_players = 2
+        self.host_log_path = BASE_DIR / "pd-server.log"
+        self.host_log_offset = 0
         self.server_rows: dict[str, dict] = {}
+        self.server_count = 0
         self.requester_ip = ""
         self.last_chat_id = 0
         self.chat_polling = False
+        self.refresh_inflight = False
+        self.window_active = True
+        self.last_refresh_started = 0.0
+        self.join_process: subprocess.Popen[str] | None = None
+        self.join_process_name = ""
 
         self._build()
+        self.bind("<FocusIn>", self._on_focus_in)
+        self.bind("<FocusOut>", self._on_focus_out)
         self.after(200, self.refresh)
         self.after(350, self.start_chat_polling)
+        self.after(INACTIVE_REFRESH_MS, self._auto_refresh_tick)
+        self.after(PROCESS_POLL_MS, self._process_tick)
 
     def _build(self) -> None:
-        outer = ttk.Frame(self, padding=12)
+        style = ttk.Style(self)
+        try:
+            style.theme_use("clam")
+        except tk.TclError:
+            pass
+
+        outer = ttk.Frame(self, padding=14)
         outer.pack(fill="both", expand=True)
         outer.columnconfigure(1, weight=1)
         outer.columnconfigure(3, weight=1)
-        outer.rowconfigure(4, weight=1)
+        outer.rowconfigure(5, weight=1)
 
         ttk.Label(outer, text="Thorfect Dark", font=("Segoe UI", 20, "bold")).grid(row=0, column=0, columnspan=4, sticky="w")
-        ttk.Label(outer, text="Perfect Dark public server browser and lobby").grid(row=1, column=0, columnspan=4, sticky="w", pady=(0, 10))
+        ttk.Label(outer, text="Public server browser, launcher, and lobby chat").grid(row=1, column=0, columnspan=4, sticky="w", pady=(0, 10))
 
         ttk.Label(outer, text="Master URL:").grid(row=2, column=0, sticky="w")
         ttk.Entry(outer, textvariable=self.master_url).grid(row=2, column=1, sticky="ew", padx=(6, 12))
@@ -130,9 +156,18 @@ class PerfectThork(tk.Tk):
 
         ttk.Label(outer, text="Host game IP:").grid(row=3, column=0, sticky="w", pady=(6, 0))
         ttk.Entry(outer, textvariable=self.advertised_ip).grid(row=3, column=1, sticky="ew", padx=(6, 12), pady=(6, 0))
-        mode_box = ttk.Combobox(outer, textvariable=self.host_mode, values=("Co-Op", "Combat Simulator"), state="readonly", width=18)
-        mode_box.grid(row=3, column=2, sticky="w", pady=(6, 0))
-        ttk.Button(outer, text="USE MY LAN IP", command=lambda: self.advertised_ip.set(detect_lan_ip())).grid(row=3, column=3, sticky="w", pady=(6, 0), padx=(6, 0))
+        action_frame = ttk.Frame(outer)
+        action_frame.grid(row=3, column=2, columnspan=2, sticky="ew", pady=(6, 0))
+        action_frame.columnconfigure(0, weight=1)
+        action_frame.columnconfigure(1, weight=1)
+        action_frame.columnconfigure(2, weight=1)
+        action_frame.columnconfigure(3, weight=1)
+        ttk.Button(action_frame, text="USE MY LAN IP", command=lambda: self.advertised_ip.set(detect_lan_ip())).grid(row=0, column=0, sticky="ew", padx=(0, 6))
+        ttk.Button(action_frame, text="HOST CO-OP", command=lambda: self.host_public("Co-Op")).grid(row=0, column=1, sticky="ew", padx=3)
+        ttk.Button(action_frame, text="HOST COMBAT", command=lambda: self.host_public("Combat Simulator")).grid(row=0, column=2, sticky="ew", padx=3)
+        ttk.Button(action_frame, text="JOIN SELECTED", command=self.join_selected).grid(row=0, column=3, sticky="ew", padx=(6, 0))
+
+        ttk.Label(outer, text="Auto-refreshes every second while active, every 5 seconds in the background.").grid(row=4, column=0, columnspan=4, sticky="w", pady=(10, 0))
 
         columns = ("name", "host", "players", "map", "mode", "status", "address")
         self.tree = ttk.Treeview(outer, columns=columns, show="headings", selectmode="browse")
@@ -141,11 +176,11 @@ class PerfectThork(tk.Tk):
         for col in columns:
             self.tree.heading(col, text=labels[col])
             self.tree.column(col, width=widths[col], anchor="w")
-        self.tree.grid(row=4, column=0, columnspan=4, sticky="nsew", pady=10)
+        self.tree.grid(row=5, column=0, columnspan=4, sticky="nsew", pady=10)
         self.tree.bind("<Double-1>", lambda _e: self.join_selected())
 
         chat_frame = ttk.LabelFrame(outer, text="Master Lobby Chat", padding=8)
-        chat_frame.grid(row=5, column=0, columnspan=4, sticky="nsew", pady=(0, 10))
+        chat_frame.grid(row=6, column=0, columnspan=4, sticky="nsew", pady=(0, 10))
         chat_frame.columnconfigure(0, weight=1)
         chat_frame.rowconfigure(0, weight=1)
 
@@ -159,13 +194,6 @@ class PerfectThork(tk.Tk):
         self.chat_entry.grid(row=1, column=0, sticky="ew", pady=(8, 0), padx=(0, 8))
         self.chat_entry.bind("<Return>", lambda _event: self.send_chat())
         ttk.Button(chat_frame, text="SEND", command=self.send_chat).grid(row=1, column=1, columnspan=2, sticky="e", pady=(8, 0))
-
-        controls = ttk.Frame(outer)
-        controls.grid(row=6, column=0, columnspan=4, sticky="ew")
-        ttk.Button(controls, text="REFRESH", command=self.refresh).pack(side="left", padx=(0, 6), ipady=5)
-        ttk.Button(controls, text="HOST PUBLIC GAME", command=self.host_public).pack(side="left", padx=6, ipady=5)
-        ttk.Button(controls, text="JOIN SELECTED", command=self.join_selected).pack(side="left", padx=6, ipady=5)
-        ttk.Button(controls, text="STOP ADVERTISING", command=self.stop_advertising).pack(side="left", padx=6, ipady=5)
 
         ttk.Label(outer, textvariable=self.status, relief="sunken", anchor="w").grid(row=7, column=0, columnspan=4, sticky="ew", pady=(10, 0))
 
@@ -243,10 +271,27 @@ class PerfectThork(tk.Tk):
             port = int(self.port.get())
         except ValueError:
             port = DEFAULT_PORT
-        save_settings({"master": self.master_url.get().strip(), "player": self.player.get().strip(), "server_name": self.server_name.get().strip(), "port": port, "advertised_ip": self.advertised_ip.get().strip(), "mode": self.host_mode.get().strip() or DEFAULT_MODE})
+        save_settings({"master": self.master_url.get().strip(), "player": self.player.get().strip(), "server_name": self.server_name.get().strip(), "port": port, "advertised_ip": self.advertised_ip.get().strip(), "mode": self.host_public_mode})
 
-    def refresh(self) -> None:
-        self.status.set("Refreshing server list…")
+    def _on_focus_in(self, _event: tk.Event[tk.Misc]) -> None:
+        self.window_active = True
+
+    def _on_focus_out(self, _event: tk.Event[tk.Misc]) -> None:
+        self.window_active = False
+
+    def _auto_refresh_tick(self) -> None:
+        if not self.winfo_exists():
+            return
+        self.refresh(silent=True)
+        self.after(ACTIVE_REFRESH_MS if self.window_active else INACTIVE_REFRESH_MS, self._auto_refresh_tick)
+
+    def refresh(self, silent: bool = False) -> None:
+        if self.refresh_inflight:
+            return
+        self.refresh_inflight = True
+        self.last_refresh_started = time.time()
+        if not silent:
+            self.status.set("Refreshing server list...")
         threading.Thread(target=self._refresh_worker, daemon=True).start()
 
     def _refresh_worker(self) -> None:
@@ -258,10 +303,16 @@ class PerfectThork(tk.Tk):
                 raise ValueError("Invalid server list")
             self.after(0, lambda: self._show_servers(servers, requester_ip))
         except (URLError, HTTPError, OSError, ValueError) as exc:
-            self.after(0, lambda: self.status.set(f"Master unavailable: {exc}"))
+            self.after(0, lambda e=exc: self._show_refresh_error(e))
+
+    def _show_refresh_error(self, exc: Exception) -> None:
+        self.refresh_inflight = False
+        self.status.set(f"Master unavailable: {exc}")
 
     def _show_servers(self, servers: list[dict], requester_ip: str = "") -> None:
+        self.refresh_inflight = False
         self.requester_ip = requester_ip
+        self.server_count = len(servers)
         self.tree.delete(*self.tree.get_children())
         self.server_rows.clear()
         for server in servers:
@@ -275,9 +326,14 @@ class PerfectThork(tk.Tk):
             )
             self.tree.insert("", "end", iid=sid, values=values)
             self.server_rows[sid] = server
-        self.status.set(f"{len(servers)} public server(s)")
+        if self.host_session and self.host_process and self.host_process.poll() is None:
+            self.status.set(
+                f"Hosting {self.host_public_mode}: {self.host_player_count}/{self.host_max_players} in lobby | {self.server_count} public server(s)"
+            )
+        else:
+            self.status.set(f"{self.server_count} public server(s)")
 
-    def host_public(self) -> None:
+    def host_public(self, selected_mode: str) -> None:
         server_name = simpledialog.askstring(APP_TITLE, "Public server name:", initialvalue=self.server_name.get(), parent=self)
         if not server_name:
             return
@@ -286,14 +342,15 @@ class PerfectThork(tk.Tk):
             return
         self.server_name.set(server_name)
         self.port.set(str(port))
+        self.host_public_mode = selected_mode
         self._remember()
         player_name = self.player.get().strip() or "Player"
-        selected_mode = self.host_mode.get().strip() or DEFAULT_MODE
         game_exe = game_executable_for_mode(selected_mode)
         if not game_exe.is_file():
             messagebox.showerror(APP_TITLE, f"Missing game executable for {selected_mode}:\n{game_exe}")
             return
         is_coop = is_coop_mode(selected_mode)
+        self.stop_advertising(silent=True)
         payload = {
             "name": server_name,
             "host_name": player_name,
@@ -312,12 +369,16 @@ class PerfectThork(tk.Tk):
         except (URLError, HTTPError, OSError, ValueError) as exc:
             messagebox.showerror(APP_TITLE, f"Could not register with the master:\n{exc}")
             return
-        self.stop_advertising(silent=True)
         self.host_session = session
         self.host_stop.clear()
+        self.host_public_name = server_name
+        self.host_player_count = 1
+        self.host_max_players = 2 if is_coop else 8
+        self.host_process_name = game_exe.name
+        self.host_log_offset = self.host_log_path.stat().st_size if self.host_log_path.exists() else 0
         threading.Thread(target=self._heartbeat_loop, daemon=True).start()
         try:
-            subprocess.Popen([
+            self.host_process = subprocess.Popen([
                 str(game_exe),
                 "--portable",
                 "--skip-intro",
@@ -335,8 +396,8 @@ class PerfectThork(tk.Tk):
             self.stop_advertising(silent=True)
             messagebox.showerror(APP_TITLE, f"Could not launch Perfect Dark:\n{exc}")
             return
-        self.status.set(f"Advertising '{server_name}' as {selected_mode} on UDP {port}")
-        self.after(500, self.refresh)
+        self.status.set(f"Hosting {selected_mode}: {self.host_player_count}/{self.host_max_players} in lobby")
+        self.after(500, lambda: self.refresh(silent=True))
 
     def _heartbeat_loop(self) -> None:
         while not self.host_stop.wait(HEARTBEAT_SECONDS):
@@ -346,7 +407,9 @@ class PerfectThork(tk.Tk):
             try:
                 api(self.master_url.get().strip(), "/servers/heartbeat", {
                     "server_id": session["server_id"], "token": session["token"],
-                    "players": 1, "status": "Lobby",
+                    "players": self.host_player_count,
+                    "status": "Lobby",
+                    "mode": self.host_public_mode,
                 })
             except Exception as exc:
                 self.after(0, lambda e=exc: self.status.set(f"Heartbeat failed: {e}"))
@@ -355,14 +418,66 @@ class PerfectThork(tk.Tk):
         self.host_stop.set()
         session = self.host_session
         self.host_session = None
+        self.host_process = None
+        self.host_process_name = ""
+        self.host_public_name = ""
+        self.host_player_count = 1
+        self.host_max_players = 2
+        self.host_log_offset = 0
         if session:
             try:
                 api(self.master_url.get().strip(), "/servers/unregister", {"server_id": session["server_id"], "token": session["token"]}, timeout=2)
             except Exception:
                 pass
         if not silent:
-            self.status.set("Stopped advertising")
-            self.after(200, self.refresh)
+            self.status.set("Host closed. Stopped advertising.")
+            self.after(200, lambda: self.refresh(silent=True))
+
+    def _update_host_player_count_from_log(self) -> None:
+        if not self.host_log_path.exists():
+            return
+        try:
+            current_size = self.host_log_path.stat().st_size
+            if current_size < self.host_log_offset:
+                self.host_log_offset = 0
+            with self.host_log_path.open("r", encoding="utf-8", errors="ignore") as handle:
+                handle.seek(self.host_log_offset)
+                chunk = handle.read()
+                self.host_log_offset = handle.tell()
+        except OSError:
+            return
+
+        for line in chunk.splitlines():
+            if "NET:" in line and " joined" in line:
+                self.host_player_count = min(self.host_max_players, self.host_player_count + 1)
+            elif "NET:" in line and " disconnected" in line:
+                self.host_player_count = max(1, self.host_player_count - 1)
+
+    def _process_tick(self) -> None:
+        if not self.winfo_exists():
+            return
+
+        if self.host_process:
+            if self.host_process.poll() is None:
+                self._update_host_player_count_from_log()
+                if self.host_session:
+                    self.status.set(
+                        f"Hosting {self.host_public_mode}: {self.host_player_count}/{self.host_max_players} in lobby"
+                    )
+            else:
+                self.stop_advertising(silent=False)
+
+        if self.join_process:
+            if self.join_process.poll() is None:
+                if not self.host_session:
+                    self.status.set(f"{self.join_process_name} is open")
+            else:
+                self.join_process = None
+                self.join_process_name = ""
+                if not self.host_session:
+                    self.status.set(f"{self.server_count} public server(s)")
+
+        self.after(PROCESS_POLL_MS, self._process_tick)
 
     @staticmethod
     def _same_private_subnet(left: str, right: str) -> bool:
@@ -417,7 +532,7 @@ class PerfectThork(tk.Tk):
             messagebox.showerror(APP_TITLE, f"Missing game executable for {server.get('mode', DEFAULT_MODE)}:\n{game_exe}")
             return
         try:
-            subprocess.Popen(
+            self.join_process = subprocess.Popen(
                 [
                     str(game_exe),
                     "--portable",
@@ -431,6 +546,7 @@ class PerfectThork(tk.Tk):
                 ],
                 cwd=str(BASE_DIR),
             )
+            self.join_process_name = game_exe.name
         except OSError as exc:
             messagebox.showerror(APP_TITLE, f"Could not launch Perfect Dark:\n{exc}")
             return
