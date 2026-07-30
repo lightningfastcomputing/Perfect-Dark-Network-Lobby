@@ -7,6 +7,7 @@ This project ships:
 * Public server browser
 * Master-server registry
 * Lobby chat
+* In-game/Match Chat
 * Browser-based hosting and joining
 * Cooperative campaign support
 * Combat Simulator support
@@ -19,7 +20,7 @@ As of July 29, 2026, the browser uses two separate game executables:
 * `coop-pd.x86_64.exe` for all coop host and join actions
 * `combat-pd.x86_64.exe` for all Combat Simulator host and join actions
 
-This is an intentional temporary workaround. The browser selects the correct executable based on the hosted or joined mode so players can use one launcher even though a single game executable does not yet handle both modes reliably.
+The browser selects the correct executable based on the hosted or joined mode so players can use one launcher.
 
 ## Included Files
 
